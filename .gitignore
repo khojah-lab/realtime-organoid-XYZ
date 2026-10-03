@@ -1,0 +1,77 @@
+# ========================
+# Media & Image Files
+# ========================
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+*.bmp
+*.ico
+*.tiff
+
+# If you have an entire folder dedicated to raw/captured images:
+# captures/
+# images/
+# data/
+
+# ========================
+# Secrets & Credentials (NEVER commit these)
+# ========================
+.env
+.env.*
+*.pem
+*.key
+*.token
+credentials.json
+secrets.yaml
+
+# ========================
+# OS & Raspberry Pi Clutter
+# ========================
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# ========================
+# Python (if you use Python scripts / Pi GPIO)
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# ========================
+# Logs & Databases
+# ========================
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+
+# ========================
+# Node / Frontend (if applicable)
+# ========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+dist/
+.cache/
+
+# ========================
+# Editor / IDE Config
+# ========================
+.vscode/
+.idea/

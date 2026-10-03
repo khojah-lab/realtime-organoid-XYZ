@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Microscopy Telemetry Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Courier New', monospace;
+    background: #0d1117;
+    color: #c9d1d9;
+    padding: 32px;
+  }
+  h1 {
+    color: #00ff99;
+    font-size: 22px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    color: #555;
+    font-size: 12px;
+    margin-bottom: 32px;
+    letter-spacing: 1px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .card.full { grid-column: 1 / -1; }
+  .card h2 {
+    color: #00ff99;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #30363d;
+  }
+  canvas { width: 100% !important; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    color: #00ff99;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid #30363d;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #21262d;
+    color: #c9d1d9;
+  }
+  tr:hover td { background: #1c2128; }
+  td:first-child { color: #58a6ff; font-weight: bold; }
+  td:nth-child(5) { color: #f0883e; }
+  .note {
+    color: #555;
+    font-size: 11px;
+    margin-top: 24px;
+    letter-spacing: 1px;
+    line-height: 2;
+  }
+</style>
+</head>
+<body>
+ 
+<h1>⬡ Microscopy Telemetry Report</h1>
+<div class="subtitle">Generated: 2026-06-01 18:39:26 &nbsp;|&nbsp; Source: /home/khojahlab/SpringXYZ/logs/actions.csv</div>
+ 
+<div class="grid">
+ 
+  <!-- Camera captures bar chart -->
+  <div class="card">
+    <h2>Camera Capture — Avg Latency per Chamber (ms)</h2>
+    <canvas id="captureChart"></canvas>
+  </div>
+ 
+  <!-- Scan + motion bar chart -->
+  <div class="card">
+    <h2>Full Scan + Motion — Avg Latency (ms)</h2>
+    <canvas id="scanChart"></canvas>
+  </div>
+ 
+  <!-- Event count -->
+  <div class="card">
+    <h2>Event Count by Action</h2>
+    <canvas id="countChart"></canvas>
+  </div>
+ 
+  <!-- Capture trend -->
+  <div class="card">
+    <h2>Capture Latency Over Time (ms)</h2>
+    <canvas id="trendCaptureChart"></canvas>
+  </div>
+ 
+  <!-- Full scan trend -->
+  <div class="card full">
+    <h2>Full Scan Latency Over Time (ms)</h2>
+    <canvas id="trendScanChart"></canvas>
+  </div>
+ 
+  <!-- Stats table -->
+  <div class="card full">
+    <h2>Full Statistics Table</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Action</th>
+          <th>Count</th>
+          <th>Avg (ms)</th>
+          <th>Median (ms)</th>
+          <th>Std Dev (ms)</th>
+          <th>P95 (ms)</th>
+          <th>Min (ms)</th>
+          <th>Max (ms)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+            <td>CAPTURE_bottom_center</td>
+            <td>100</td>
+            <td>19.0</td>
+            <td>17.25</td>
+            <td>5.86</td>
+            <td>30.41</td>
+            <td>13.14</td>
+            <td>47.61</td>
+        </tr>
+        <tr>
+            <td>CAPTURE_bottom_left</td>
+            <td>100</td>
+            <td>18.86</td>
+            <td>17.73</td>
+            <td>5.02</td>
+            <td>30.14</td>
+            <td>12.48</td>
+            <td>42.0</td>
+        </tr>
+        <tr>
+            <td>CAPTURE_bottom_right</td>
+            <td>100</td>
+            <td>18.71</td>
+            <td>17.45</td>
+            <td>4.64</td>
+            <td>27.95</td>
+            <td>12.51</td>
+            <td>39.23</td>
+        </tr>
+        <tr>
+            <td>CAPTURE_top_center</td>
+            <td>100</td>
+            <td>19.09</td>
+            <td>17.19</td>
+            <td>6.03</td>
+            <td>31.97</td>
+            <td>12.92</td>
+            <td>45.88</td>
+        </tr>
+        <tr>
+            <td>CAPTURE_top_left</td>
+            <td>100</td>
+            <td>18.75</td>
+            <td>17.39</td>
+            <td>4.66</td>
+            <td>30.37</td>
+            <td>13.36</td>
+            <td>37.2</td>
+        </tr>
+        <tr>
+            <td>CAPTURE_top_right</td>
+            <td>100</td>
+            <td>19.69</td>
+            <td>17.88</td>
+            <td>6.01</td>
+            <td>31.86</td>
+            <td>12.68</td>
+            <td>47.44</td>
+        </tr>
+        <tr>
+            <td>FULL_SCAN</td>
+            <td>100</td>
+            <td>216673.05</td>
+            <td>222894.3</td>
+            <td>8344.37</td>
+            <td>223557.6</td>
+            <td>201555.31</td>
+            <td>233044.39</td>
+        </tr></tbody>
+    </table>
+  </div>
+ 
+</div>
+ 
+<div class="note">
+  ★ Std Dev — high value means inconsistent timing; may indicate mechanical variance.<br>
+  ★ P95 — 95% of events complete faster than this value.<br>
+  ★ Median — more reliable than average when outliers are present.<br>
+  ★ Capture charts and scan charts use separate scales for clarity.
+</div>
+ 
+<script>
+const stats = {"CAPTURE_bottom_center": {"count": 100, "mean": 19.0, "median": 17.25, "std": 5.86, "p95": 30.41, "min": 13.14, "max": 47.61}, "CAPTURE_bottom_left": {"count": 100, "mean": 18.86, "median": 17.73, "std": 5.02, "p95": 30.14, "min": 12.48, "max": 42.0}, "CAPTURE_bottom_right": {"count": 100, "mean": 18.71, "median": 17.45, "std": 4.64, "p95": 27.95, "min": 12.51, "max": 39.23}, "CAPTURE_top_center": {"count": 100, "mean": 19.09, "median": 17.19, "std": 6.03, "p95": 31.97, "min": 12.92, "max": 45.88}, "CAPTURE_top_left": {"count": 100, "mean": 18.75, "median": 17.39, "std": 4.66, "p95": 30.37, "min": 13.36, "max": 37.2}, "CAPTURE_top_right": {"count": 100, "mean": 19.69, "median": 17.88, "std": 6.01, "p95": 31.86, "min": 12.68, "max": 47.44}, "FULL_SCAN": {"count": 100, "mean": 216673.05, "median": 222894.3, "std": 8344.37, "p95": 223557.6, "min": 201555.31, "max": 233044.39}};
+const trend = {"labels": ["12:01:51", "12:02:28", "12:03:05", "12:03:42", "13:00:00", "13:00:37", "13:01:14", "13:01:51", "13:02:29", "13:03:06", "13:03:43", "14:00:00", "14:00:37", "14:01:14", "14:01:51", "14:02:28", "14:03:06", "14:03:43", "15:00:00", "15:00:37", "15:01:14", "15:01:51", "15:02:29", "15:03:06", "15:03:43", "16:00:00", "16:00:37", "16:01:14", "16:01:51", "16:02:29", "16:03:06", "16:03:43", "17:00:00", "17:00:37", "17:01:14", "17:01:51", "17:02:28", "17:03:05", "17:03:43", "18:00:00", "18:00:37", "18:01:14", "18:01:51", "18:02:28", "18:03:06", "18:03:43", "19:00:00", "19:00:37", "19:01:14", "19:01:51", "19:02:28", "19:03:06", "19:03:43", "20:00:00", "20:00:37", "20:01:14", "20:01:51", "20:02:28", "20:03:06", "20:03:43", "21:00:00", "21:00:37", "21:01:14", "21:01:51", "21:02:28", "21:03:06", "21:03:49", "22:00:00", "22:00:34", "22:01:09", "22:01:43", "22:02:18", "22:02:52", "22:03:27", "23:00:00", "23:00:34", "23:01:09", "23:01:43", "23:02:17", "23:02:52", "23:03:26", "00:00:00", "00:00:34", "00:01:08", "00:01:43", "00:02:17", "00:02:52", "00:03:26", "01:00:00", "01:00:34", "01:01:09", "01:01:43", "01:02:17", "01:02:52", "01:03:26", "02:00:00", "02:00:34", "02:01:08", "02:01:43", "02:02:17", "02:02:52", "02:03:26", "03:00:00", "03:00:34", "03:01:08", "03:01:43", "03:02:17", "03:02:52", "03:03:26", "04:00:00", "04:00:34", "04:01:09", "04:01:43", "04:02:18", "04:02:52", "04:03:26", "05:00:00", "05:00:34", "05:01:09", "05:01:43", "05:02:17", "05:02:52", "05:03:26", "06:00:00", "06:00:34", "06:01:09", "06:01:43", "06:02:17", "06:02:52", "06:03:26", "07:00:00", "07:00:34", "07:01:08", "07:01:43", "07:02:18", "07:02:52", "07:03:27", "08:00:00", "08:00:34", "08:01:09", "08:01:43", "08:02:18", "08:02:52", "08:03:27", "09:00:00", "09:00:34", "09:01:09", "09:01:43", "09:02:18", "09:02:52", "09:03:27", "10:00:00", "10:00:34", "10:01:09", "10:01:43", "10:02:18", "10:02:52", "10:03:27", "11:00:00", "11:00:34", "11:01:09", "11:01:43", "11:02:18", "11:02:52", "11:03:26", "12:00:00", "12:00:34", "12:01:08", "12:01:43", "12:02:17", "12:02:52", "12:03:26", "13:00:00", "13:00:34", "13:01:09", "13:01:43", "13:02:17", "13:02:52", "13:03:26", "14:00:00", "14:00:34", "14:01:09", "14:01:43", "14:02:18", "14:02:52", "14:03:27", "16:00:00", "16:00:33", "16:01:07", "16:01:40", "16:02:14", "16:02:48", "16:03:21", "17:00:00", "17:00:33", "17:01:07", "17:01:40", "17:02:14", "17:02:48", "17:03:21"], "values": [19.64, 13.37, 20.96, 222936.96, 14.85, 15.89, 15.71, 16.55, 16.16, 14.55, 223436.03, 19.11, 20.22, 15.71, 13.94, 18.75, 14.37, 223308.34, 19.16, 14.16, 18.01, 17.54, 13.75, 17.08, 223226.15, 21.71, 24.31, 26.36, 16.5, 27.35, 16.15, 223479.17, 19.36, 17.25, 19.32, 24.6, 16.3, 17.01, 223044.69, 16.59, 21.17, 18.96, 20.27, 18.39, 24.57, 223083.51, 16.12, 30.34, 20.85, 13.52, 15.67, 23.22, 223239.91, 20.74, 14.06, 24.3, 14.78, 17.51, 13.9, 223167.05, 15.4, 15.16, 14.13, 16.15, 15.53, 37.34, 229830.09, 15.17, 16.27, 15.54, 23.13, 16.58, 21.13, 207065.45, 21.67, 13.59, 18.46, 17.33, 15.24, 14.94, 206757.19, 15.58, 23.29, 13.08, 18.18, 17.73, 21.17, 206938.58, 13.03, 14.59, 30.92, 15.35, 15.35, 17.32, 206755.63, 13.02, 17.87, 17.83, 14.85, 25.05, 18.98, 206783.53, 13.78, 14.72, 12.78, 20.61, 15.62, 14.88, 206722.77, 15.78, 30.41, 13.61, 23.35, 18.52, 16.22, 206943.03, 24.82, 23.29, 25.31, 17.38, 14.89, 20.82, 206756.01, 12.96, 21.52, 13.51, 13.97, 13.92, 13.59, 206914.38, 17.94, 14.63, 18.46, 27.4, 15.32, 15.51, 207173.13, 29.57, 22.69, 17.18, 16.48, 15.36, 15.7, 207155.12, 21.42, 17.84, 13.43, 15.62, 19.24, 19.63, 207073.32, 14.36, 14.04, 14.5, 16.84, 18.84, 17.79, 207104.7, 15.38, 18.01, 17.12, 13.54, 21.16, 17.67, 206962.24, 13.31, 14.79, 23.56, 16.35, 14.31, 16.19, 206854.15, 15.38, 16.31, 16.37, 18.86, 13.7, 15.05, 206911.62, 20.95, 23.01, 25.43, 37.2, 21.12, 18.4, 207475.44, 17.75, 47.61, 42.0, 18.86, 39.64, 22.07, 201615.99, 14.77, 19.4, 20.81, 30.37, 38.72, 35.93, 201555.31], "actions": ["CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN", "CAPTURE_bottom_right", "CAPTURE_bottom_center", "CAPTURE_bottom_left", "CAPTURE_top_left", "CAPTURE_top_center", "CAPTURE_top_right", "FULL_SCAN"]};
+ 
+const COLORS = [
+  '#00ff99','#58a6ff','#f0883e','#ff7b72',
+  '#d2a8ff','#79c0ff','#56d364','#ffa657'
+];
+ 
+const allActions     = Object.keys(stats);
+const captureActions = allActions.filter(a =>  a.startsWith('CAPTURE_'));
+const otherActions   = allActions.filter(a => !a.startsWith('CAPTURE_'));
+ 
+// ── Reusable bar chart ────────────────────────────────────────────────────────
+function makeBarChart(id, actions) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: {
+      labels: actions,
+      datasets: [{
+        data:            actions.map(a => stats[a].mean),
+        backgroundColor: actions.map((_, i) => COLORS[i % COLORS.length] + 'aa'),
+        borderColor:     actions.map((_, i) => COLORS[i % COLORS.length]),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#21262d' },
+              title: { display: true, text: 'ms', color: '#555' } }
+      }
+    }
+  });
+}
+ 
+makeBarChart('captureChart', captureActions);
+makeBarChart('scanChart',    otherActions);
+ 
+// ── Count chart ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('countChart'), {
+  type: 'bar',
+  data: {
+    labels: allActions,
+    datasets: [{
+      data:            allActions.map(a => stats[a].count),
+      backgroundColor: '#58a6ffaa',
+      borderColor:     '#58a6ff',
+      borderWidth: 1,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#888' }, grid: { color: '#21262d' },
+            title: { display: true, text: 'events', color: '#555' } }
+    }
+  }
+});
+ 
+// ── Reusable trend chart ──────────────────────────────────────────────────────
+function makeTrendChart(id, filterFn, color) {
+  const labels  = [];
+  const values  = [];
+  const actions = [];
+  trend.labels.forEach((l, i) => {
+    if (filterFn(trend.actions[i])) {
+      labels.push(l);
+      values.push(trend.values[i]);
+      actions.push(trend.actions[i]);
+    }
+  });
+  new Chart(document.getElementById(id), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        borderColor:     color,
+        backgroundColor: color + '18',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => actions[items[0].dataIndex],
+            label: (item)  => item.formattedValue + ' ms'
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#555', font: { size: 9 }, maxTicksLimit: 20 },
+              grid: { color: '#21262d' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#21262d' },
+              title: { display: true, text: 'ms', color: '#555' } }
+      }
+    }
+  });
+}
+ 
+makeTrendChart('trendCaptureChart', a =>  a.startsWith('CAPTURE_'), '#00ff99');
+makeTrendChart('trendScanChart',    a => !a.startsWith('CAPTURE_'), '#f0883e');
+</script>
+</body>
+</html>
