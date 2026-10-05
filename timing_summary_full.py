@@ -13,7 +13,6 @@ os.makedirs(TIMING_DIR, exist_ok=True)
 timestamp  = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT     = os.path.join(TIMING_DIR, f"timing_report_full_{timestamp}.html")
 
-# ── Load CSV ──────────────────────────────────────────────────────────────────
 rows_by_action = defaultdict(list)
 timeline       = []
 
@@ -23,7 +22,6 @@ with open(LOG_FILE, 'r') as f:
         if row['latency_us']:
             rows_by_action[row['action']].append(int(row['latency_us']))
 
-# ── Build full capture trend (ALL events, no cap) ─────────────────────────────
 all_capture_labels  = []
 all_capture_values  = []
 all_capture_actions = []
@@ -65,7 +63,6 @@ print(f"Total capture events: {n_captures}")
 print(f"Total scan events:    {n_scans}")
 print(f"Report saved to:      {OUTPUT}\n")
 
-# ── HTML ──────────────────────────────────────────────────────────────────────
 html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -226,12 +223,10 @@ function sharedScales(yLabel) {{
   }};
 }}
 
-// ── Downsample helper ─────────────────────────────────────────────────────────
 function downsample(arr, n) {{
   return arr.filter((_, i) => i % n === 0);
 }}
 
-// ── Figure 1: Full capture trend ──────────────────────────────────────────────
 const N = 3;
 const capLabels  = downsample(captureData.labels,  N);
 const capValues  = downsample(captureData.values,  N);
@@ -267,7 +262,6 @@ new Chart(document.getElementById('fullCaptureChart'), {{
   }}
 }});
 
-// ── Figure 2: Full scan trend ─────────────────────────────────────────────────
 new Chart(document.getElementById('fullScanChart'), {{
   type: 'line',
   data: {{
@@ -299,7 +293,6 @@ new Chart(document.getElementById('fullScanChart'), {{
   }}
 }});
 
-// ── Save figure helper ────────────────────────────────────────────────────────
 function saveChart(canvasId, filename) {{
   var link = document.createElement('a');
   link.download = filename + '.png';
