@@ -52,11 +52,12 @@ ssh khojahlab@100.112.125.34
 
 ---
 
-### 2. Start the Web Server
-Navigate to the project directory, activate the Python virtual environment, and launch the server:
+### 2. Pull Latest Changes & Start the Web Server
+Navigate to the project directory, pull the latest code updates, activate the Python virtual environment, and launch the server:
 
 ```bash
 cd SpringXYZ
+git pull
 source venv/bin/activate
 python3 server.py
 ```
