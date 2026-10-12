@@ -6,6 +6,40 @@ Lab drive: https://drive.google.com/drive/folders/1pTi2H-WdkrL60x7fensSTAS5a-E9s
 lab secrets: https://docs.google.com/spreadsheets/d/1VQD1994L5gKGxoP8PO2QHVpyDeTH2WBEH_3-IMPY0Ls/edit?usp=sharing
 
 ^^^ todo: fix authorizations... should probably make it more robust
+## 🚀 Quick Start Guide
+
+### 1. SSH into the Raspberry Pi (via Tailscale)
+Ensure your computer is connected to the lab's **Tailscale** network, then SSH into the Raspberry Pi:
+
+```bash
+ssh khojahlab@100.112.125.34
+```
+
+---
+
+### 2. Pull Latest Changes & Start the Web Server
+Navigate to the project directory, pull the latest code updates, activate the Python virtual environment, and launch the server:
+
+```bash
+cd SpringXYZ
+source venv/bin/activate
+python3 server.py
+```
+
+---
+Open the site here (your device must be connected to tailscale)
+http://100.112.125.34:3000/
+
+---
+
+## 📋 TODO & Documentation Links
+
+The following guides and SOPs will be linked below for lab onboarding and knowledge transfer:
+
+- [ ] **TODO**: Link to Web Dashboard UI & Automated Scan SOP
+- [ ] **TODO**: Link to Hardware Pinout & Motor HAT Schematic (Adafruit MotorHAT 0x60 / GPIO limit switches)
+- [ ] **TODO**: Link to Cloud Upload & Data Storage Guide (OpenStack / Swift sync)
+- [ ] **TODO**: Link to Device Troubleshooting & FAQ Guide
 
 ---
 
@@ -41,46 +75,3 @@ MOST OF THIS DOES NOT WORK THIS WAS WHAT WAS INTENDED WE NEED TO REFACTOR THE CO
 
 ---
 
-## 🚀 Quick Start Guide
-
-### 1. SSH into the Raspberry Pi (via Tailscale)
-Ensure your computer is connected to the lab's **Tailscale** network, then SSH into the Raspberry Pi:
-
-```bash
-ssh khojahlab@100.112.125.34
-```
-
----
-
-### 2. Pull Latest Changes & Start the Web Server
-Navigate to the project directory, pull the latest code updates, activate the Python virtual environment, and launch the server:
-
-```bash
-cd SpringXYZ
-git pull
-source venv/bin/activate
-python3 server.py
-```
-
----
-
-### 3. Port Forward the Web Interface to Your Computer
-To access the live camera feed and web control dashboard from your local browser, open a new terminal window on your local machine and set up SSH port forwarding:
-
-```bash
-ssh -L 5000:localhost:5000 khojahlab@100.112.125.34
-```
-
-Once the tunnel is established, open your browser and go to:
-👉 **`http://localhost:5000`**
-
----
-
-## 📋 TODO & Documentation Links
-
-The following guides and SOPs will be linked below for lab onboarding and knowledge transfer:
-
-- [ ] **TODO**: Link to Web Dashboard UI & Automated Scan SOP
-- [ ] **TODO**: Link to Hardware Pinout & Motor HAT Schematic (Adafruit MotorHAT 0x60 / GPIO limit switches)
-- [ ] **TODO**: Link to Cloud Upload & Data Storage Guide (OpenStack / Swift sync)
-- [ ] **TODO**: Link to Device Troubleshooting & FAQ Guide
