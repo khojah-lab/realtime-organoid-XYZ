@@ -3,10 +3,14 @@
 This repository contains the software for controlling the **XYZ Organoid Imaging System**, a custom remote microscopy platform built with Raspberry Pi, Python, stepper/DC motors, and a web interface.
 
 Lab drive: https://drive.google.com/drive/folders/1pTi2H-WdkrL60x7fensSTAS5a-E9sUcp?usp=drive_link
+
 lab secrets: https://docs.google.com/spreadsheets/d/1VQD1994L5gKGxoP8PO2QHVpyDeTH2WBEH_3-IMPY0Ls/edit?usp=sharing
 
 ^^^ todo: fix authorizations... should probably make it more robust
 ## 🚀 Quick Start Guide
+
+### 0. Connect to Tailscale
+Go to https://tailscale.com/download, and follow the instructions for your respective OS. When prompted to sign in, use the `khojahlab@gmail.com` credentials. Do not use your own credentials on Tailscale. Once you are connected, you should see your device on the admin console.
 
 ### 1. SSH into the Raspberry Pi (via Tailscale)
 Ensure your computer is connected to the lab's **Tailscale** network, then SSH into the Raspberry Pi:
