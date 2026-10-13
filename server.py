@@ -748,13 +748,17 @@ def check_directories():
     print("="*50 + "\n")
 
 
-# =========================
-# RUN
-# =========================
+# =========================================
+# RUN THE APPLICATION SERVER
+# =========================================
 if __name__ == '__main__':
-    check_directories()
-    from image_upload_script import set_upload_time
-    threading.Thread(target=set_upload_time, daemon=True).start()
-    print("Server running at http://0.0.0.0:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False,
-                 allow_unsafe_werkzeug=True)
+    try:
+        print("Starting Flask-SocketIO server on localhost...")
+        # Forcing host to '127.0.0.1' ensures it remains strictly local to the Pi
+        # and ignores the Tailscale network interface entirely.
+        socketio.run(app, host='0.0.0.0', port=3000, debug=False, allow_unsafe_werkzeug=True)
+    except KeyboardInterrupt:
+        print("\nShutting down cleanly...")
+    finally:
+        # Clean up your GPIO hardware pins when stopping the server
+        GPIO.cleanup()
