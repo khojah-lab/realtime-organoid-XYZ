@@ -17,8 +17,18 @@ ssh khojahlab@100.112.125.34
 
 ---
 
-### 2. Pull Latest Changes & Start the Web Server
-Navigate to the project directory, pull the latest code updates, activate the Python virtual environment, and launch the server:
+### 2. Start the Web Server
+To ensure that the server is already started, or if it needs to be started, run this command:
+
+```bash
+ss -lptn 'sport = :3000'
+```
+
+If there is an entry, the server is up. If there are no entries, the server needs to be started.
+
+---
+
+To start the server, navigate to the project directory, activate the Python virtual environment, and launch the server:
 
 ```bash
 cd SpringXYZ
@@ -27,8 +37,7 @@ python3 server.py
 ```
 
 ---
-Open the site here (your device must be connected to tailscale)
-http://100.112.125.34:3000/
+Open the site here (your device must be connected to tailscale): http://100.112.125.34:3000/
 
 ---
 
