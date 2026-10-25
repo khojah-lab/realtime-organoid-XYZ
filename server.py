@@ -508,6 +508,10 @@ def video():
 axis_locks = {"x": threading.Lock(), "y": threading.Lock(), "z": threading.Lock()}
 
 def start_move(axis, move_function, event_name):
+    # Steppers have no position feedback, so a manual move during a scan
+    # shifts every remaining chamber. The UI sends override=1 after confirmation.
+    if scan_status["running"] and not request.args.get("override"):
+        return "SCAN_RUNNING", 409
     if not request.args.get("repeat"):
         log_event(event_name)
     lock = axis_locks[axis]

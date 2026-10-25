@@ -83,6 +83,13 @@ body { font-family: 'Times New Roman', Times, serif; background: #fafafa; }
 }
 .arrow-grid button:active { background: #bbb; }
 .arrow-grid button, .z-controls button { touch-action: none; user-select: none; }
+.arrow-grid button:disabled, .z-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+#scan-lock-notice {
+    margin-top: 8px; padding: 6px 10px; max-width: 520px;
+    background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px;
+    font-size: 0.9em;
+}
+#scan-lock-notice button { margin-left: 8px; cursor: pointer; }
 .arrow-grid .empty { background: transparent; border: none; pointer-events: none; }
 
 /* Z pad */
@@ -282,6 +289,11 @@ font-size: 14px;
              onerror="document.getElementById('stream_status').textContent='⚠ Stream unavailable.'"
              onload="document.getElementById('stream_status').textContent=''">
         <div id="stream_status"></div>
+
+        <div id="scan-lock-notice" style="display:none;">
+            <span id="scan-lock-text"></span>
+            <button id="scan-unlock-btn" type="button">Unlock anyway</button>
+        </div>
 
         <div class="controls-row">
 
@@ -682,6 +694,7 @@ socket.on('scan_status', function(msg) {
     if (msg.next_scan && msg.next_scan !== "Calculating..." && msg.next_scan !== "—") {
         updateCountdown(msg.next_scan);
     }
+    setScanRunning(!!msg.running);
     if (msg.running) {
         $("#scan_box").addClass("scan-running");
         $("#scannowbtn").prop("disabled", true).text("Scanning...");
@@ -700,6 +713,43 @@ socket.on('scan_status', function(msg) {
 // while the axis is still moving, so the repeat interval only needs to be short.
 var HOLD_REPEAT_MS = 100;
 
+var scanRunning  = false;
+var scanOverride = false;  // user confirmed manual moves for the current scan
+var MOVE_BUTTONS = "#btn-forward, #btn-backward, #btn-left, #btn-right, #btn-up, #btn-down";
+
+function updateMotionLock() {
+    $(MOVE_BUTTONS).prop("disabled", scanRunning && !scanOverride);
+    $("#scan-lock-notice").toggle(scanRunning);
+    $("#scan-unlock-btn").toggle(!scanOverride);
+    $("#scan-lock-text").text(scanOverride
+        ? "Manual override active. The rest of this scan will be misaligned."
+        : "Scan in progress: manual movement is locked.");
+}
+
+function setScanRunning(running) {
+    scanRunning = running;
+    if (!running) scanOverride = false;
+    updateMotionLock();
+}
+
+$("#scan-unlock-btn").click(function() {
+    var confirmed = confirm(
+        "A scan is running. Moving the stage manually will shift the remaining " +
+        "chamber positions, because the motors have no position feedback.\n\n" +
+        "Unlock manual movement anyway?");
+    if (confirmed) {
+        scanOverride = true;
+        updateMotionLock();
+    }
+});
+
+function moveParams(isRepeat) {
+    var params = {};
+    if (isRepeat)     params.repeat   = 1;
+    if (scanOverride) params.override = 1;
+    return params;
+}
+
 function bindHoldToMove(buttonId, url) {
     var repeatTimer = null;
 
@@ -710,14 +760,14 @@ function bindHoldToMove(buttonId, url) {
 
     $(buttonId).on("pointerdown", function(event) {
         if (event.button !== 0 || repeatTimer !== null) return;
-        $.get(url);
-        repeatTimer = setInterval(function() { $.get(url, { repeat: 1 }); }, HOLD_REPEAT_MS);
+        $.get(url, moveParams(false));
+        repeatTimer = setInterval(function() { $.get(url, moveParams(true)); }, HOLD_REPEAT_MS);
     });
     // Listen on window so releasing the pointer off the button still stops it
     $(window).on("pointerup pointercancel blur", stopRepeating);
     // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
     $(buttonId).on("click", function(event) {
-        if (event.detail === 0) $.get(url);
+        if (event.detail === 0) $.get(url, moveParams(false));
     });
 }
 
@@ -974,6 +1024,7 @@ updateCountdown(data.next_scan);
 
 window.onload = function() {
     $.getJSON({ type:"GET", url:'/get_system_parameters_from_html' });
+    $.getJSON('/scan_status', function(data) { setScanRunning(!!data.running); });
     // Also poll scan status every 30s in case socket misses an update
     setInterval(function() {
         $.getJSON('/scan_status', function(data) {
