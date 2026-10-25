@@ -502,35 +502,50 @@ def video():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # -- Motion --
+# Each request moves one short burst. The UI repeats requests while a button is
+# held, so a burst is dropped if the same axis is still moving (otherwise two
+# threads would step the same motor at once).
+axis_locks = {"x": threading.Lock(), "y": threading.Lock(), "z": threading.Lock()}
+
+def start_move(axis, move_function, event_name):
+    if not request.args.get("repeat"):
+        log_event(event_name)
+    lock = axis_locks[axis]
+    if not lock.acquire(blocking=False):
+        return "BUSY"
+
+    def run():
+        try:
+            move_function()
+        finally:
+            lock.release()
+
+    threading.Thread(target=run).start()
+    return "OK"
+
 @app.route('/up')
 def up():
-    log_event("MOVE_UP")
-    threading.Thread(target=move_up).start(); return "OK"
+    return start_move("z", move_up, "MOVE_UP")
 
 @app.route('/down')
 def down():
-    log_event("MOVE_DOWN")
-    threading.Thread(target=move_down).start(); return "OK"
+    return start_move("z", move_down, "MOVE_DOWN")
 
 @app.route('/left')
 def left():
-    log_event("MOVE_LEFT")
-    threading.Thread(target=move_left).start(); return "OK"
+    return start_move("x", move_left, "MOVE_LEFT")
 
 @app.route('/right')
 def right():
-    log_event("MOVE_RIGHT")
-    threading.Thread(target=move_right).start(); return "OK"
+    return start_move("x", move_right, "MOVE_RIGHT")
 
 @app.route('/forward')
 def forward():
-    log_event("MOVE_FORWARD")
-    threading.Thread(target=move_backward).start(); return "OK"   # Y axis intentionally inverted
+    return start_move("y", move_backward, "MOVE_FORWARD")   # Y axis intentionally inverted
 
 @app.route('/backward')
 def backward():
-    log_event("MOVE_BACKWARD")
-    threading.Thread(target=move_forward).start(); return "OK"    # Y axis intentionally inverted
+    return start_move("y", move_forward, "MOVE_BACKWARD")   # Y axis intentionally inverted
 
 @app.route('/stop')
 def stop():

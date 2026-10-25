@@ -82,6 +82,7 @@ body { font-family: 'Times New Roman', Times, serif; background: #fafafa; }
     border-radius: 7px; background: #f0f0f0;
 }
 .arrow-grid button:active { background: #bbb; }
+.arrow-grid button, .z-controls button { touch-action: none; user-select: none; }
 .arrow-grid .empty { background: transparent; border: none; pointer-events: none; }
 
 /* Z pad */
@@ -695,12 +696,37 @@ socket.on('scan_status', function(msg) {
 // =========================
 // MOTION CONTROLS
 // =========================
-$("#btn-forward").click(function()  { $.get("/forward"); });
-$("#btn-backward").click(function() { $.get("/backward"); });
-$("#btn-left").click(function()     { $.get("/left"); });
-$("#btn-right").click(function()    { $.get("/right"); });
-$("#btn-up").click(function()       { $.get("/up"); });
-$("#btn-down").click(function()     { $.get("/down"); });
+// Press moves once; holding repeats until release. The server drops a request
+// while the axis is still moving, so the repeat interval only needs to be short.
+var HOLD_REPEAT_MS = 100;
+
+function bindHoldToMove(buttonId, url) {
+    var repeatTimer = null;
+
+    function stopRepeating() {
+        clearInterval(repeatTimer);
+        repeatTimer = null;
+    }
+
+    $(buttonId).on("pointerdown", function(event) {
+        if (event.button !== 0 || repeatTimer !== null) return;
+        $.get(url);
+        repeatTimer = setInterval(function() { $.get(url, { repeat: 1 }); }, HOLD_REPEAT_MS);
+    });
+    // Listen on window so releasing the pointer off the button still stops it
+    $(window).on("pointerup pointercancel blur", stopRepeating);
+    // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
+    $(buttonId).on("click", function(event) {
+        if (event.detail === 0) $.get(url);
+    });
+}
+
+bindHoldToMove("#btn-forward",  "/forward");
+bindHoldToMove("#btn-backward", "/backward");
+bindHoldToMove("#btn-left",     "/left");
+bindHoldToMove("#btn-right",    "/right");
+bindHoldToMove("#btn-up",       "/up");
+bindHoldToMove("#btn-down",     "/down");
 $("#btn-stop").click(function()     { $.get("/stop"); });
 
 
