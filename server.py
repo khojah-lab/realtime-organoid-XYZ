@@ -288,6 +288,7 @@ def run_scan():
         print("[SCAN] Already running, skipping.")
         return
 
+    log_event("SCAN_START")
     scan_status["running"]      = True
     scan_status["current_step"] = "Starting scan..."
     socketio.emit('scan_status', scan_status, namespace='/')
@@ -511,6 +512,7 @@ def start_move(axis, move_function, event_name):
     # Steppers have no position feedback, so a manual move during a scan
     # shifts every remaining chamber. The UI sends override=1 after confirmation.
     if scan_status["running"] and not request.args.get("override"):
+        log_event(f"{event_name}_REJECTED_SCAN_RUNNING")
         return "SCAN_RUNNING", 409
     if not request.args.get("repeat"):
         log_event(event_name)
@@ -553,6 +555,7 @@ def backward():
 
 @app.route('/stop')
 def stop():
+    log_event("STOP_RELEASE_STEPPERS")
     release_all(); return "OK"
 
 # -- Manual scan trigger --
@@ -587,6 +590,7 @@ def update_parameters_motor():
                 args=(speed, direction, duration)
             ).start()
 
+        log_event(f"DC_ALL_{flow_dir}_SPEED_{speed}_DUR_{duration}s")
         print(f"[MOTOR ALL] speed={speed} dir={flow_dir} dur={duration}s")
     except Exception as e:
         print(f"[MOTOR ALL] Error: {e}")
@@ -607,6 +611,7 @@ def dc_motor():
             daemon=True
         ).start()
 
+        log_event(f"DC_CH{ch}_{direction}_SPEED_{speed}_DUR_{duration}s")
         print(f"[DC CH{ch}] speed={speed} dir={direction} dur={duration}s")
     except Exception as e:
         print(f"[DC MOTOR] Error: {e}")
@@ -616,6 +621,7 @@ def dc_motor():
 @app.route('/dc_motor_stop')
 def dc_motor_stop():
     ch = request.args.get('ch')
+    log_event(f"DC_CH{ch}_STOP" if ch else "DC_ALL_STOP")
     if ch:
         threading.Thread(target=stop_motor_single, args=(int(ch),), daemon=True).start()
     else:
@@ -631,12 +637,14 @@ def dc_motor_states():
 def update_zoom_focus():
     system_params['zoom']  = request.args.get('zoom', 0)
     system_params['focus'] = request.args.get('focus', 0)
+    log_event(f"ZOOM_{system_params['zoom']}_FOCUS_{system_params['focus']}")
     print("ZOOM/FOCUS ->", system_params['zoom'], system_params['focus'])
     return "OK"
 
 # -- Autofocus --
 @app.route('/autofocus_camera_from_html')
 def autofocus():
+    log_event("AUTOFOCUS_REQUEST")
     print("AUTOFOCUS REQUEST")
     return "OK"
 
