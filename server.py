@@ -167,7 +167,7 @@ def generate_frames():
 # =========================
 LA_TZ = pytz.timezone("America/Los_Angeles")
 
-BASE_DIR        = "/home/khojahlab/SpringXYZ"
+BASE_DIR        = os.environ.get("XYZ_BASE_DIR", "/home/khojahlab/SpringXYZ")
 IMAGE_DIR       = os.path.join(BASE_DIR, "images")
 IMAGES_BASE_DIR = os.path.join(BASE_DIR, "images_upload")
 
