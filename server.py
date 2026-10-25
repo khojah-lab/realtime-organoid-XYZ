@@ -512,7 +512,8 @@ def start_move(axis, move_function, event_name):
     # Steppers have no position feedback, so a manual move during a scan
     # shifts every remaining chamber. The UI sends override=1 after confirmation.
     if scan_status["running"] and not request.args.get("override"):
-        log_event(f"{event_name}_REJECTED_SCAN_RUNNING")
+        if not request.args.get("repeat"):
+            log_event(f"{event_name}_REJECTED_SCAN_RUNNING")
         return "SCAN_RUNNING", 409
     if not request.args.get("repeat"):
         log_event(event_name)
@@ -552,6 +553,22 @@ def forward():
 @app.route('/backward')
 def backward():
     return start_move("y", move_forward, "MOVE_BACKWARD")   # Y axis intentionally inverted
+
+MOVE_DIRECTIONS = {"up", "down", "left", "right", "forward", "backward"}
+
+# Reported by the UI when an arrow is released after a hold (not for single taps)
+@app.route('/move_hold_end')
+def move_hold_end():
+    direction = request.args.get("direction", "")
+    if direction not in MOVE_DIRECTIONS:
+        return "Unknown direction", 400
+    try:
+        seconds = float(request.args.get("seconds", 0))
+        bursts  = int(request.args.get("bursts", 0))
+    except ValueError:
+        return "Bad number", 400
+    log_event(f"MOVE_{direction.upper()}_HELD_{seconds:.1f}s_{bursts}_BURSTS")
+    return "OK"
 
 @app.route('/stop')
 def stop():

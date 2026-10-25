@@ -752,16 +752,46 @@ function moveParams(isRepeat) {
 
 function bindHoldToMove(buttonId, url) {
     var repeatTimer = null;
+    var pressStartMs = 0;
+    var burstsAccepted = 0;   // responses of "OK"; the server answers "BUSY" mid-burst
+    var requestsInFlight = 0;
+    var reportWhenSettled = false;
+
+    function sendMove(isRepeat) {
+        requestsInFlight++;
+        $.get(url, moveParams(isRepeat))
+            .done(function(response) { if (response === "OK") burstsAccepted++; })
+            .always(function() {
+                requestsInFlight--;
+                if (reportWhenSettled && requestsInFlight === 0) reportHoldEnd();
+            });
+    }
+
+    // A single tap is already in the log as the press, so only report real holds
+    function reportHoldEnd() {
+        reportWhenSettled = false;
+        if (burstsAccepted <= 1) return;
+        $.get("/move_hold_end", {
+            direction: url.slice(1),
+            seconds: ((Date.now() - pressStartMs) / 1000).toFixed(1),
+            bursts: burstsAccepted
+        });
+    }
 
     function stopRepeating() {
+        if (repeatTimer === null) return;
         clearInterval(repeatTimer);
         repeatTimer = null;
+        // The count is only final once the last responses have come back
+        if (requestsInFlight === 0) reportHoldEnd(); else reportWhenSettled = true;
     }
 
     $(buttonId).on("pointerdown", function(event) {
         if (event.button !== 0 || repeatTimer !== null) return;
-        $.get(url, moveParams(false));
-        repeatTimer = setInterval(function() { $.get(url, moveParams(true)); }, HOLD_REPEAT_MS);
+        pressStartMs = Date.now();
+        burstsAccepted = 0;
+        sendMove(false);
+        repeatTimer = setInterval(function() { sendMove(true); }, HOLD_REPEAT_MS);
     });
     // Listen on window so releasing the pointer off the button still stops it
     $(window).on("pointerup pointercancel blur", stopRepeating);
