@@ -742,8 +742,11 @@ function dcSend(ch, speed, direction, duration) {
     updateDcStatus(ch, speed, direction);
 }
  
+var dcDirection = {};  // channel -> 'FORWARD' | 'BACKWARD' | 'STOP', as last known
+
 function updateDcStatus(ch, speed, direction) {
     var el = $('#dc-st-' + ch);
+    dcDirection[ch] = (speed == 0) ? 'STOP' : direction;
     el.removeClass('running reverse');
     if (direction === 'STOP' || speed == 0) {
         el.text('● Stopped');
@@ -755,12 +758,25 @@ function updateDcStatus(ch, speed, direction) {
 }
  
 // Speed slider labels
-$(document).on('input', '.dc-speed-slider', function() {
-    var ch  = $(this).data('ch');
-    var val = parseFloat($(this).val()).toFixed(2);
-    $('#dc-sv-' + ch).text(val);
-});
+function syncDcSliderLabel(slider) {
+    $('#dc-sv-' + $(slider).data('ch')).text(parseFloat($(slider).val()).toFixed(2));
+}
+
+$(document).on('input', '.dc-speed-slider', function() { syncDcSliderLabel(this); });
+
+// Browsers can restore slider positions without firing 'input'
+$(window).on('pageshow', function() { $('.dc-speed-slider').each(function() { syncDcSliderLabel(this); }); });
  
+// Releasing a slider on a running channel applies the new speed immediately.
+// Re-sends the duration field, which restarts that channel's auto-stop timer.
+$(document).on('change', '.dc-speed-slider', function() {
+    var ch = $(this).data('ch');
+    var direction = dcDirection[ch];
+    if (direction !== 'FORWARD' && direction !== 'BACKWARD') return;
+    var dur = parseFloat($('#dc-duration').val()) || 0;
+    dcSend(ch, parseFloat($(this).val()), direction, dur);
+});
+
 // Forward button
 $(document).on('click', '.btn-fwd', function() {
     var ch   = $(this).data('ch');
@@ -808,20 +824,18 @@ $('#dc-all-rev').click(function() {
     }
 });
  
-// Poll live state every 5 s (syncs UI if server auto-stopped after duration)
+// Poll live state every 2 s (syncs status text if server auto-stopped after duration).
+// Sliders are the pending speed for the next Fwd/Rev press, so they are not synced.
 setInterval(function() {
     $.getJSON('/dc_motor_states', function(states) {
         $.each(states, function(ch, throttle) {
             ch = parseInt(ch);
             var speed = Math.abs(throttle);
             var dir   = throttle > 0 ? 'FORWARD' : throttle < 0 ? 'BACKWARD' : 'STOP';
-            // Sync slider
-            $('.dc-speed-slider[data-ch=' + ch + ']').val(speed);
-            $('#dc-sv-' + ch).text(speed.toFixed(2));
             updateDcStatus(ch, speed, dir);
         });
     });
-}, 5000);
+}, 2000);
 
 // =========================
 // AUTOFOCUS
