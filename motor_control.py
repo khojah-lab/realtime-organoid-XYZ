@@ -19,13 +19,20 @@ from adafruit_motorkit import MotorKit
 from adafruit_motor import stepper
 
 # ── Hardware init ─────────────────────────────────────────────
-kit1 = MotorKit(address=0x60)   # Z axis
-kit2 = MotorKit(address=0x61)   # XY platform
+try:
+    kit1 = MotorKit(address=0x60)   # Z axis
+except Exception as e:
+    print(f"[WARNING] Z-axis MotorKit (0x60) not found: {e}")
+    kit1 = None
 
-# Exported so server.py move_platform() can use them directly
-# without opening a second MotorKit instance at 0x61
-x_motor = kit2.stepper1   # X axis — left / right
-y_motor = kit2.stepper2   # Y axis — forward / backward
+try:
+    kit2 = MotorKit(address=0x61)   # XY platform
+except Exception as e:
+    print(f"[WARNING] XY-platform MotorKit (0x61) not found: {e}")
+    kit2 = None
+
+x_motor = kit2.stepper1 if kit2 else None   # X axis — left / right
+y_motor = kit2.stepper2 if kit2 else None   # Y axis — forward / backward
 
 
 # ── Shared step helper ────────────────────────────────────────
