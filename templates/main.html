@@ -261,6 +261,17 @@ font-size: 14px;
     </div>
 </div>
 
+<div id="hardware-error-banner" style="
+    display: none;
+    background: #fdecea;
+    color: #b71c1c;
+    border-bottom: 2px solid #f44336;
+    padding: 12px 50px;
+    font-family: sans-serif;
+    font-size: 15px;
+    font-weight: bold;
+"></div>
+
 <div style="padding: 16px 50px 0;">
     <p style="font-size: xx-large; margin: 0;"><b> University of California San Diego </b>| <b>Reem Khojah Research Lab</b> | Device: <b>XYZ Imaging System</b>
 </div>
@@ -932,8 +943,25 @@ updateCountdown(data.next_scan);
 });
 }, 30000);
 
+function updateHardwareBanner(disconnected) {
+    var banner = document.getElementById('hardware-error-banner');
+    if (disconnected && disconnected.length > 0) {
+        banner.textContent = '⚠ Disconnected Hardware: ' + disconnected.join('  |  ');
+        banner.style.display = 'block';
+    } else {
+        banner.style.display = 'none';
+    }
+}
+
+socket.on('hardware_status', function(msg) {
+    updateHardwareBanner(msg.disconnected);
+});
+
 window.onload = function() {
     $.getJSON({ type:"GET", url:'/get_system_parameters_from_html' });
+    $.getJSON('/hardware_status', function(data) {
+        updateHardwareBanner(data.disconnected);
+    });
     // Also poll scan status every 30s in case socket misses an update
     setInterval(function() {
         $.getJSON('/scan_status', function(data) {

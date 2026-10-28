@@ -16,11 +16,11 @@ from timing import Timer, log_event, set_socketio
 from motor_control import (
     move_up, move_down, move_left, move_right,
     move_forward, move_backward, release_all,
-    x_motor, y_motor,                          # shared kit2 steppers — no second MotorKit at 0x61
+    x_motor, y_motor, kit1, kit2,              # shared kit2 steppers — no second MotorKit at 0x61
 )
 from dc_motor_control import (
     set_motor, set_all_motors, stop_all_motors, get_motor_states,
-    stop_motor as stop_motor_single,
+    stop_motor as stop_motor_single, _kit_dc,
 )
 from adafruit_motor import stepper
 import RPi.GPIO as GPIO
@@ -54,20 +54,23 @@ set_socketio(socketio)
 # CAMERA SETUP
 # picam2 is started once and never stopped.
 # =========================
-picam2 = Picamera2()
+try:
+    picam2 = Picamera2()
 
-camera_config = picam2.create_video_configuration(
-    main={"size": (1024, 1024)},   # high-quality capture stream
-    lores={"size": (800, 800)},   # smooth web preview stream
-    display="lores",
-    buffer_count=6
-)
+    camera_config = picam2.create_video_configuration(
+        main={"size": (1024, 1024)},   # high-quality capture stream
+        lores={"size": (800, 800)},   # smooth web preview stream
+        display="lores",
+        buffer_count=6
+    )
 
-picam2.configure(camera_config)
+    picam2.configure(camera_config)
 
-
-picam2.start()
-time.sleep(2)
+    picam2.start()
+    time.sleep(2)
+except Exception as e:
+    print(f"[WARNING] Camera not available: {e}")
+    picam2 = None
 
 
 # =========================
@@ -101,6 +104,8 @@ camera_lock  = threading.Lock()
 
 def capture_loop():
     global latest_frame
+    if picam2 is None:
+        return
 
     while True:
         try:
@@ -204,6 +209,9 @@ RETURN_HOME = [
 def move_platform(axis, direction, steps):
     """Move x_motor or y_motor (imported from motor_control) a given number of steps."""
     motor = x_motor if axis == "x" else y_motor
+    if motor is None:
+        print(f"  [WARNING] {axis.upper()} motor not connected — skipping move.")
+        return
     for _ in range(steps):
         motor.onestep(direction=direction, style=stepper.SINGLE)
         time.sleep(STEP_DELAY)
@@ -622,11 +630,31 @@ def autofocus():
     return "OK"
 
 # -- System param sync --
+def get_disconnected_hardware():
+    disconnected = []
+    if kit1 is None:
+        disconnected.append("Z-Axis Stepper HAT (0x60)")
+    if kit2 is None:
+        disconnected.append("XY-Platform Stepper HAT (0x61)")
+    if _kit_dc is None:
+        disconnected.append("DC Motor HAT (0x63)")
+    if picam2 is None:
+        disconnected.append("Camera (Picamera2)")
+    return disconnected
+
+
+@app.route('/hardware_status')
+def hardware_status():
+    return jsonify({"disconnected": get_disconnected_hardware()})
+
+
 @app.route('/get_system_parameters_from_html')
 def get_system_parameters():
     socketio.emit('system_parameters_to_html',
                   {'data': {'data': system_params}}, namespace='/')
     socketio.emit('scan_status', scan_status, namespace='/')
+    socketio.emit('hardware_status',
+                  {'disconnected': get_disconnected_hardware()}, namespace='/')
     return "OK"
 
 # -- Detection --

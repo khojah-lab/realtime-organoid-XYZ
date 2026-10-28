@@ -47,36 +47,44 @@ def do_steps(motors, direction, steps: int = 50, delay: float = 0.005) -> None:
 # ── Release ───────────────────────────────────────────────────
 def release_all() -> None:
     """De-energise all stepper coils (reduces heat when idle)."""
-    kit1.stepper1.release()
-    kit1.stepper2.release()
-    kit2.stepper1.release()
-    kit2.stepper2.release()
+    if kit1:
+        kit1.stepper1.release()
+        kit1.stepper2.release()
+    if kit2:
+        kit2.stepper1.release()
+        kit2.stepper2.release()
 
 
 # ── Z axis (kit1) ─────────────────────────────────────────────
 def move_up() -> None:
-    do_steps([kit1.stepper1, kit1.stepper2], stepper.BACKWARD)
+    if kit1:
+        do_steps([kit1.stepper1, kit1.stepper2], stepper.BACKWARD)
 
 
 def move_down() -> None:
-    do_steps([kit1.stepper1, kit1.stepper2], stepper.FORWARD)
+    if kit1:
+        do_steps([kit1.stepper1, kit1.stepper2], stepper.FORWARD)
 
 
 # ── X axis (kit2 stepper1) ────────────────────────────────────
 def move_left() -> None:
-    do_steps([kit2.stepper1], stepper.BACKWARD)
+    if kit2:
+        do_steps([kit2.stepper1], stepper.BACKWARD)
 
 
 def move_right() -> None:
-    do_steps([kit2.stepper1], stepper.FORWARD)
+    if kit2:
+        do_steps([kit2.stepper1], stepper.FORWARD)
 
 
 # ── Y axis (kit2 stepper2) ────────────────────────────────────
 # Note: forward/backward are intentionally swapped in server.py
 #       to match the physical orientation of the stage.
 def move_forward() -> None:
-    do_steps([kit2.stepper2], stepper.FORWARD)
+    if kit2:
+        do_steps([kit2.stepper2], stepper.FORWARD)
 
 
 def move_backward() -> None:
-    do_steps([kit2.stepper2], stepper.BACKWARD)
+    if kit2:
+        do_steps([kit2.stepper2], stepper.BACKWARD)
