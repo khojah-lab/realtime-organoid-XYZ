@@ -639,21 +639,23 @@ socket.on('new_action', function(data) {
 });
 
 // Past image result
-socket.on('response2', function(msg) {
+socket.on('past_image_result', function(msg) {
     var img = document.getElementById('past_image');
     img.src = msg.data === false ? "image_not_available.png"
                                  : "data:image/jpeg;base64," + msg.data;
 });
 
 // Detection result
-socket.on('response3', function(msg) {
-    document.getElementById('detection_image').src =
-        "data:image/jpeg;base64," + msg.data;
+socket.on('detection_result', function(msg) {
+    if (msg.data) {
+        document.getElementById('detection_image').src =
+            "data:image/jpeg;base64," + msg.data;
+    }
 });
 
 // System parameters sync on load
-socket.on('system_parameters_to_html', function(msg) {
-    var r = msg.data.data;
+socket.on('system_parameters', function(msg) {
+    var r = msg.data;
     $("#zoom_text").html(r.zoom);          $("#zoom_slider").val(r.zoom);
     $("#focus_text").html(r.focus);        $("#focus_slider").val(r.focus);
     $("#motor_text").html(r.motor_speed);  $("#motor_slider").val(r.motor_speed);
@@ -666,7 +668,7 @@ socket.on('system_parameters_to_html', function(msg) {
 // =========================
 $("#led-btn").click(function() {
     $.get("/led_toggle", function(state) {
-        if (state === "1") {
+        if (state === "1" || state === "True") {
             $("#led-btn").addClass("on");
         } else {
             $("#led-btn").removeClass("on");
@@ -838,7 +840,7 @@ setInterval(function() {
 // AUTOFOCUS
 // =========================
 $(".autofocusbutton").click(function() {
-    $.getJSON({ type:"GET", url:'/autofocus_camera_from_html' });
+    $.getJSON({ type:"GET", url:'/autofocus' });
 });
 
 
@@ -958,7 +960,7 @@ socket.on('hardware_status', function(msg) {
 });
 
 window.onload = function() {
-    $.getJSON({ type:"GET", url:'/get_system_parameters_from_html' });
+    $.getJSON({ type:"GET", url:'/system_parameters' });
     $.getJSON('/hardware_status', function(data) {
         updateHardwareBanner(data.disconnected);
     });

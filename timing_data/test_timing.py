@@ -1,10 +1,18 @@
-# Run with: python3 test_timing.py
+# Run with: python3 timing_data/test_timing.py
 # This file is for testing accuracy and efficacy of the timing.
 # Test 3 should show 500,000 us and 1,200,000 us if Timer is running
 # accurately.
 
-from timing import log_event, Timer, set_socketio
+import csv
+import os
+import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import LOG_FILE
+from services.telemetry import Timer, log_event
 
 print("=" * 45)
 print("TEST 1: Basic log_event (no latency)")
@@ -33,12 +41,10 @@ print()
 print("=" * 45)
 print("TEST 4: Check CSV was written")
 print("=" * 45)
-import csv, os
-log_file = "/home/khojahlab/Downloads/Web/Reem_Khojah_Lab_Cloud_motor-main/logs/actions.csv"
-if os.path.exists(log_file):
-    with open(log_file, 'r') as f:
+if os.path.exists(LOG_FILE):
+    with open(LOG_FILE, "r") as f:
         rows = list(csv.reader(f))
-    print(f"CSV has {len(rows)} rows (including header):")
+    print(f"CSV ({LOG_FILE}) has {len(rows)} rows (including header):")
     for row in rows:
         print(" ", row)
 else:
