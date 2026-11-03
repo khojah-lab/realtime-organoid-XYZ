@@ -13,7 +13,7 @@ _upload_lock = threading.Lock()
 _client = None
 
 
-def _get_client():
+def get_client():
     global _client
     if _client is None:
         _client = boto3.client("s3", region_name=REGION)
@@ -47,7 +47,7 @@ def upload_pending_images(staging_dir):
                     continue
                 path = os.path.join(directory, filename)
                 try:
-                    _get_client().upload_file(path, BUCKET, key)
+                    get_client().upload_file(path, BUCKET, key)
                     os.remove(path)
                     uploaded += 1
                 except Exception as e:

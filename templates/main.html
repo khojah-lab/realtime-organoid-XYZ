@@ -1048,7 +1048,7 @@ function cbLoadDates(thenShowLatest) {
     $.getJSON("/captures/dates", function(response) {
         captureBrowser.dates = response.dates;
         if (response.dates.length === 0) {
-            cbSetMessage("No captures on this device yet.");
+            cbSetMessage("No captures in the cloud yet.");
             return;
         }
         var newest = response.dates[0].date;
@@ -1061,13 +1061,13 @@ function cbLoadDates(thenShowLatest) {
 function cbShowDate(date) {
     captureBrowser.date = date;
     $("#cb-date").val(date);
-    var info = captureBrowser.dates.filter(function(entry) { return entry.date === date; })[0];
-    $("#cb-date-info").text(info ? info.scans + " scan" + (info.scans === 1 ? "" : "s") : "");
+    $("#cb-date-info").text("");
     $("#cb-scan-times, #cb-grid").empty();
     $("#cb-viewer").hide();
     cbSetMessage("Loading...");
     $.getJSON("/captures/scans", { date: date }, function(response) {
         captureBrowser.scans = response.scans;
+        $("#cb-date-info").text(response.scans.length + " scan" + (response.scans.length === 1 ? "" : "s"));
         if (response.scans.length === 0) {
             cbSetMessage("No scans on this date. Use the arrows to jump to a day that has scans.");
             captureBrowser.scanIndex = -1;
