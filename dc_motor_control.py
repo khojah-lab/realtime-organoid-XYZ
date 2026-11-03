@@ -25,14 +25,18 @@ import threading
 from adafruit_motorkit import MotorKit
 
 # ── Hardware init ────────────────────────────────────────────
-_kit_dc = MotorKit(address=0x63)
+try:
+    _kit_dc = MotorKit(address=0x63)
+except Exception as e:
+    print(f"[WARNING] DC MotorKit (0x63) not found: {e}")
+    _kit_dc = None
 
 # Friendly name → MotorKit motor object
 MOTORS = {
-    1: _kit_dc.motor1,
-    2: _kit_dc.motor2,
-    3: _kit_dc.motor3,   # also drives motor 5 (parallel)
-    4: _kit_dc.motor4,   # also drives motor 6 (parallel)
+    1: _kit_dc.motor1 if _kit_dc else None,
+    2: _kit_dc.motor2 if _kit_dc else None,
+    3: _kit_dc.motor3 if _kit_dc else None,   # also drives motor 5 (parallel)
+    4: _kit_dc.motor4 if _kit_dc else None,   # also drives motor 6 (parallel)
 }
 
 # ── Internal state ───────────────────────────────────────────
@@ -53,7 +57,8 @@ def _cancel_timer(motor_id: int) -> None:
 
 
 def _apply_throttle(motor_id: int, throttle: float) -> None:
-    MOTORS[motor_id].throttle = throttle
+    if MOTORS[motor_id] is not None:
+        MOTORS[motor_id].throttle = throttle
     _state[motor_id] = throttle
 
 
