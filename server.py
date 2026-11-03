@@ -9,6 +9,8 @@ import os
 import base64
 import pytz
 from timing import Timer, log_event, set_socketio
+from captures import create_captures_blueprint
+from s3_upload import upload_pending_images
 
 # =========================
 # MOTOR + GPIO IMPORTS
@@ -173,6 +175,8 @@ IMAGES_BASE_DIR = os.path.join(BASE_DIR, "images_upload")
 
 os.makedirs(IMAGE_DIR,       exist_ok=True)
 os.makedirs(IMAGES_BASE_DIR, exist_ok=True)
+
+app.register_blueprint(create_captures_blueprint(IMAGE_DIR))
 
 STEPS_BETWEEN_CHAMBERS = 4000
 STEP_DELAY             = 0.005
@@ -360,6 +364,10 @@ def run_scan():
             scan_status["current_step"] = ""
             socketio.emit('scan_status', scan_status, namespace='/')
             print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
+
+            threading.Thread(
+                target=upload_pending_images, args=(IMAGES_BASE_DIR,), daemon=True
+            ).start()
 
 
 # =========================
@@ -679,92 +687,6 @@ def detect_organoid():
     print("[DETECT] Starting organoid detection...")
     threading.Thread(target=run_detection).start()
     return jsonify({"success": True, "message": "Detection started"})
-
-# -- Retrieve past image --
-@app.route('/retrieve_past_image')
-def retrieve_past_image():
-    from image_download_script import fetch_image
-    dt_str = request.args.get('datetime')
-    try:
-        # Parse the datetime from the frontend
-        ts = datetime.datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
-        ts = LA_TZ.localize(ts)
-        
-        print(f"[RETRIEVE] Searching for image at: {ts}")
-        
-        # Download image from Swift storage
-        success = fetch_image(ts)
-        
-        if success:
-            print(f"[RETRIEVE] Download successful, looking for file...")
-            
-            # The download script saves to images_downloaded/ with timestamp in filename
-            # Look for the downloaded file
-            import glob
-            search_pattern = f"images_downloaded/*{ts.strftime('%d_%m_%Y_%H_%M')}*.png"
-            matching_files = glob.glob(search_pattern)
-            
-            if matching_files:
-                fpath = matching_files[0]
-                print(f"[RETRIEVE] Found file: {fpath}")
-                
-                if os.path.exists(fpath):
-                    img = cv2.imread(fpath)
-                    if img is not None:
-                        # Convert to jpg and send to frontend
-                        _, buf = cv2.imencode('.jpg', img)
-                        b64 = base64.b64encode(buf).decode('utf-8')
-                        socketio.emit('response2', {'data': b64}, namespace='/')
-                        return "OK"
-            
-            print(f"[RETRIEVE] File not found after download")
-        else:
-            print(f"[RETRIEVE] Download failed")
-        
-        # If we get here, image wasn't found
-        socketio.emit('response2', {'data': False}, namespace='/')
-        
-    except Exception as e:
-        print("retrieve_past_image error:", e)
-        import traceback
-        traceback.print_exc()
-        socketio.emit('response2', {'data': False}, namespace='/')
-    return "OK"
-# -- Download zip --
-@app.route('/prepare_download_images')
-def prepare_download():
-    from image_download_script import fetch_images_from_t1_to_t2
-    from_str = request.args.get('from')
-    to_str   = request.args.get('to')
-    try:
-        print(f"[DOWNLOAD] Preparing images from {from_str} to {to_str}")
-        
-        t1 = LA_TZ.localize(datetime.datetime.strptime(from_str, "%Y-%m-%dT%H:%M"))
-        t2 = LA_TZ.localize(datetime.datetime.strptime(to_str,   "%Y-%m-%dT%H:%M"))
-        
-        zip_path = fetch_images_from_t1_to_t2(t1, t2)
-        
-        if zip_path and os.path.exists(zip_path):
-            app.config['LAST_ZIP'] = zip_path
-            print(f"[DOWNLOAD] Zip created: {zip_path}")
-            return jsonify({"success": True})
-        else:
-            print("[DOWNLOAD] No images found in range")
-            return jsonify({"success": False, "error": "No images found in this time range"})
-            
-    except Exception as e:
-        print("prepare_download error:", e)
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route('/download_images')
-def download_images():
-    zip_path = app.config.get('LAST_ZIP')
-    if zip_path and os.path.exists(zip_path):
-        return send_file(zip_path, as_attachment=True)
-    return "No zip ready", 404
-
 
 def check_directories():
     dirs_to_check = [IMAGE_DIR, IMAGES_BASE_DIR, "/tmp"]

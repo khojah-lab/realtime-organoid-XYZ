@@ -61,7 +61,7 @@ The following guides and SOPs will be linked below for lab onboarding and knowle
 
 - [ ] **TODO**: Link to Web Dashboard UI & Automated Scan SOP
 - [ ] **TODO**: Link to Hardware Pinout & Motor HAT Schematic (Adafruit MotorHAT 0x60 / GPIO limit switches)
-- [ ] **TODO**: Link to Cloud Upload & Data Storage Guide (OpenStack / Swift sync)
+- [ ] **TODO**: Link to Cloud Upload & Data Storage Guide (AWS S3 sync)
 - [ ] **TODO**: Link to Device Troubleshooting & FAQ Guide
 
 ---
@@ -93,7 +93,7 @@ MOST OF THIS DOES NOT WORK THIS WAS WHAT WAS INTENDED WE NEED TO REFACTOR THE CO
 - **Image History & Download**: Browse and download historical experiment captures directly from the web interface.
 
 ### ☁️ 6. Cloud Backup & Reproducible Action Logging
-- **Automated Cloud Sync**: Background threads (`image_upload_script.py`) zip and sync image datasets to OpenStack / Swift object storage.
+- **Automated Cloud Sync**: After each scan, `s3_upload.py` uploads new images to the `realtime-organoid-xyz-data` S3 bucket (`us-east-2`) under `YYYY/MM/DD/HH/`, deleting local copies once uploaded.
 - **Audit Trail (`actions.csv`)**: Timestamped event log tracking every motor move, scan, and user action to ensure high scientific reproducibility.
 
 ---
