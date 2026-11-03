@@ -32,7 +32,17 @@ If there is an entry, the server is up. If there are no entries, the server need
 
 ---
 
-To start the server, navigate to the project directory, activate the Python virtual environment, and launch the server:
+> **Note:** You should not normally need to start the server by hand. On the Pi it runs as a systemd service, `/etc/systemd/system/xyz.service`, which starts on boot, restarts on failure, and keeps running after you close your SSH session. Manage it with:
+>
+> ```bash
+> sudo systemctl status xyz     # is it running?
+> sudo systemctl restart xyz    # restart after pulling changes
+> journalctl -u xyz -f          # live logs
+> ```
+>
+> Only use the manual steps below if the service is stopped or for debugging. Stop the service first (`sudo systemctl stop xyz`) so two servers don't fight over port 3000.
+
+To start the server manually, navigate to the project directory, activate the Python virtual environment, and launch the server:
 
 ```bash
 cd SpringXYZ
