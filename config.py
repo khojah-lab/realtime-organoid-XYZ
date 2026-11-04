@@ -16,7 +16,11 @@ LA_TZ = pytz.timezone("America/Los_Angeles")
 # ── Directory & File Paths ────────────────────────────────────
 # Defaults to the repository directory so the server can run on
 # both the Raspberry Pi (/home/khojahlab/SpringXYZ) and local dev machines.
-BASE_DIR = Path(os.getenv("SPRINGXYZ_BASE_DIR", Path(__file__).resolve().parent))
+BASE_DIR = Path(
+    os.getenv("SPRINGXYZ_BASE_DIR")
+    or os.getenv("XYZ_BASE_DIR")
+    or Path(__file__).resolve().parent
+)
 
 IMAGE_DIR             = BASE_DIR / "images"
 IMAGES_UPLOAD_DIR     = BASE_DIR / "images_upload"
@@ -84,16 +88,10 @@ RETURN_HOME_MOVEMENTS = [
     ("y", "FORWARD", STEPS_BETWEEN_CHAMBERS),
 ]
 
-# ── OpenStack Swift Cloud Storage Settings ────────────────────
+# ── AWS S3 Cloud Storage Settings ─────────────────────────────
+S3_BUCKET = os.getenv("XYZ_S3_BUCKET", "realtime-organoid-xyz-data")
+S3_REGION = os.getenv("XYZ_S3_REGION", "us-east-2")
+
+# Deprecated OpenStack Swift stubs (retained until Phase 3 replaces services/cloud_storage.py)
 SWIFT_CONTAINER = os.getenv("SWIFT_CONTAINER", "image_store_motor")
-SWIFT_OPTIONS = {
-    "os_user_domain_name":    os.getenv("OS_USER_DOMAIN_NAME", "Default"),
-    "os_auth_version":        os.getenv("OS_AUTH_VERSION", "3"),
-    "os_project_id":          os.getenv("OS_PROJECT_ID", "d17a2bf42d924025aa8fe740cdb3dc78"),
-    "os_project_name":        os.getenv("OS_PROJECT_NAME", "biocloud"),
-    "os_username":            os.getenv("OS_USERNAME", "gguru@ucsd.edu"),
-    "os_project_domain_id":   os.getenv("OS_PROJECT_DOMAIN_ID", "default"),
-    "os_project_domain_name": os.getenv("OS_PROJECT_DOMAIN_NAME", "Default"),
-    "os_password":            os.getenv("OS_PASSWORD", "khojahlab"),
-    "os_auth_url":            os.getenv("OS_AUTH_URL", "https://identity.cloud.sdsc.edu:5000/v3"),
-}
+SWIFT_OPTIONS = {}

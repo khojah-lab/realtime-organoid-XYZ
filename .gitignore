@@ -41,6 +41,7 @@ Thumbs.db
 # ========================
 # Python (if you use Python scripts / Pi GPIO)
 # ========================
+.python-version
 __pycache__/
 *.py[cod]
 *$py.class
