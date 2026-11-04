@@ -27,7 +27,8 @@ from config import (
 from hardware.camera import capture_bgr_frame
 from hardware.gpio_control import set_led
 from hardware.stepper_motors import move_platform
-from services.telemetry import Timer, emit_socket_event
+from services.cloud_storage import upload_pending_images
+from services.telemetry import Timer, emit_socket_event, log_event
 
 # ── Scan Status State (shared with UI) ────────────────────────
 scan_status = {
@@ -99,6 +100,7 @@ def run_scan() -> None:
         print("[SCAN] Already running, skipping.")
         return
 
+    log_event("SCAN_START")
     scan_status["running"]      = True
     scan_status["current_step"] = "Starting scan..."
     emit_socket_event("scan_status", scan_status)
@@ -167,6 +169,12 @@ def run_scan() -> None:
             scan_status["current_step"] = ""
             emit_socket_event("scan_status", scan_status)
             print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
+
+            threading.Thread(
+                target=upload_pending_images,
+                args=(str(IMAGES_UPLOAD_DIR),),
+                daemon=True,
+            ).start()
 
 
 def _scan_scheduler_loop() -> None:

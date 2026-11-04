@@ -91,7 +91,3 @@ RETURN_HOME_MOVEMENTS = [
 # ── AWS S3 Cloud Storage Settings ─────────────────────────────
 S3_BUCKET = os.getenv("XYZ_S3_BUCKET", "realtime-organoid-xyz-data")
 S3_REGION = os.getenv("XYZ_S3_REGION", "us-east-2")
-
-# Deprecated OpenStack Swift stubs (retained until Phase 3 replaces services/cloud_storage.py)
-SWIFT_CONTAINER = os.getenv("SWIFT_CONTAINER", "image_store_motor")
-SWIFT_OPTIONS = {}
