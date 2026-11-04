@@ -24,7 +24,7 @@ from config import (
     CHAMBER_MOVEMENTS,
     RETURN_HOME_MOVEMENTS,
 )
-from hardware.camera import capture_bgr_frame
+from hardware.camera import capture_fresh_bgr_frame
 from hardware.gpio_control import set_led
 from hardware.stepper_motors import move_platform
 from services.cloud_storage import upload_pending_images
@@ -70,7 +70,7 @@ def take_scan_photo(chamber_name: str) -> str | None:
     print(f"  [SCAN] Capturing {chamber_name}...")
 
     try:
-        frame = capture_bgr_frame()
+        frame = capture_fresh_bgr_frame()
         if frame is None:
             print("  [SCAN] ✗ Camera frame unavailable")
             return None

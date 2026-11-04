@@ -6,13 +6,13 @@ HATs, and DC motor HATs for the UI status banner.
 ────────────────────────────────────────────────────────────────
 """
 
-from hardware.camera import is_camera_connected
+from hardware.camera import is_camera_connected, is_camera_streaming
 from hardware.stepper_motors import kit1, kit2
 from hardware.dc_motors import is_dc_hat_connected
 
 
 def get_disconnected_hardware() -> list[str]:
-    """Return a list of human-readable names for any disconnected peripherals."""
+    """Return a list of human-readable names for any disconnected or stalled peripherals."""
     disconnected = []
     if kit1 is None:
         disconnected.append("Z-Axis Stepper HAT (0x60)")
@@ -22,4 +22,6 @@ def get_disconnected_hardware() -> list[str]:
         disconnected.append("DC Motor HAT (0x63)")
     if not is_camera_connected():
         disconnected.append("Camera (Picamera2)")
+    elif not is_camera_streaming():
+        disconnected.append("Camera Stream Stalled (auto-recovering...)")
     return disconnected

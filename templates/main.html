@@ -1290,8 +1290,59 @@ function updateHardwareBanner(disconnected) {
     }
 }
 
+var _lastCameraSeq = null;
+var _cameraWasStalled = false;
+var _lastStreamReconnectMs = 0;
+
+function reconnectVideoStream() {
+    var now = Date.now();
+    if (now - _lastStreamReconnectMs < 3000) return;
+    _lastStreamReconnectMs = now;
+    var img = document.getElementById('camera_feed');
+    if (img) {
+        img.src = '/video?t=' + now;
+    }
+}
+
+function updateCameraWatchdog(camera) {
+    if (!camera) return;
+    var statusEl = document.getElementById('stream_status');
+    var img = document.getElementById('camera_feed');
+
+    if (!camera.connected) {
+        statusEl.textContent = '\u26a0 Camera not connected.';
+        _cameraWasStalled = true;
+        return;
+    }
+
+    var seqStalled = (_lastCameraSeq !== null && camera.frame_seq === _lastCameraSeq);
+    _lastCameraSeq = camera.frame_seq;
+
+    if (!camera.streaming || seqStalled) {
+        statusEl.textContent = '\u26a0 Camera stream stalled \u2014 auto-recovering...';
+        _cameraWasStalled = true;
+        return;
+    }
+
+    // Stream is healthy on the backend
+    if (_cameraWasStalled || (img && img.complete && img.naturalWidth === 0)) {
+        _cameraWasStalled = false;
+        statusEl.textContent = '';
+        reconnectVideoStream();
+    } else {
+        statusEl.textContent = '';
+    }
+}
+
 socket.on('hardware_status', function(msg) {
     updateHardwareBanner(msg.disconnected);
+    if (msg.camera) updateCameraWatchdog(msg.camera);
+});
+
+socket.on('connect', function() {
+    if (_lastCameraSeq !== null) {
+        reconnectVideoStream();
+    }
 });
 
 window.onload = function() {
@@ -1299,7 +1350,18 @@ window.onload = function() {
     $.getJSON('/scan_status', function(data) { setScanRunning(!!data.running); });
     $.getJSON('/hardware_status', function(data) {
         updateHardwareBanner(data.disconnected);
+        updateCameraWatchdog(data.camera);
     });
+    // Poll hardware & camera watchdog every 5s to detect stalled feeds and auto-reconnect
+    setInterval(function() {
+        $.getJSON('/hardware_status', function(data) {
+            updateHardwareBanner(data.disconnected);
+            updateCameraWatchdog(data.camera);
+        }).fail(function() {
+            _cameraWasStalled = true;
+            document.getElementById('stream_status').textContent = '\u26a0 Server connection lost \u2014 reconnecting...';
+        });
+    }, 5000);
     // Also poll scan status every 30s in case socket misses an update
     setInterval(function() {
         $.getJSON('/scan_status', function(data) {
