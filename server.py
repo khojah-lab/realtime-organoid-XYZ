@@ -6,7 +6,7 @@ Application entrypoint for the XYZ Organoid Remote Imaging System.
 Architecture overview:
   - config.py         : Paths, GPIO pins, I2C addresses, scan & cloud settings
   - hardware/         : Camera, GPIO (LED & limit switches), Stepper & DC motors
-  - services/         : Telemetry, 6-well automated scanner, ML/OpenCV detection, Swift cloud sync
+  - services/         : Telemetry, 6-well automated scanner, ML/OpenCV detection, AWS S3 cloud sync
   - routes/           : Flask blueprints for UI, motion control, and analysis/storage
 ────────────────────────────────────────────────────────────────
 """

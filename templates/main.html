@@ -82,6 +82,14 @@ body { font-family: 'Times New Roman', Times, serif; background: #fafafa; }
     border-radius: 7px; background: #f0f0f0;
 }
 .arrow-grid button:active { background: #bbb; }
+.arrow-grid button, .z-controls button { touch-action: none; user-select: none; }
+.arrow-grid button:disabled, .z-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+#scan-lock-notice {
+    margin-top: 8px; padding: 6px 10px; max-width: 520px;
+    background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px;
+    font-size: 0.9em;
+}
+#scan-lock-notice button { margin-left: 8px; cursor: pointer; }
 .arrow-grid .empty { background: transparent; border: none; pointer-events: none; }
 
 /* Z pad */
@@ -240,6 +248,44 @@ font-size: 14px;
     cursor: pointer;
 }
 .modal-btn-no:hover { background: #ddd; }
+/* ── PANELS: every page section gets its own border ── */
+.panel {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 30px 0 0 50px;
+}
+.panel > p:first-child { margin-top: 0; }
+#capture-browser { flex: 1 1 calc(100% - 100px); width: auto; margin-right: 50px; }
+
+/* ── IMAGE BROWSER ── */
+#capture-browser button, #capture-browser input { font-size: 14px; }
+.cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.cb-muted { color: #666; }
+.cb-error { color: #b00020; }
+.cb-row button {
+    padding: 5px 12px; cursor: pointer; border: 1px solid #888;
+    border-radius: 5px; background: #f0f0f0;
+}
+.cb-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+.cb-time.active { background: #4CAF50; color: white; border-color: #388E3C; }
+#cb-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.cb-card { position: relative; border: 2px solid transparent; border-radius: 6px; background: #111; }
+.cb-card.viewing { border-color: #4CAF50; }
+.cb-thumb { width: 100%; display: block; cursor: pointer; border-radius: 4px; aspect-ratio: 1/1; object-fit: cover; }
+.cb-check { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; cursor: pointer; }
+.cb-label { color: #ddd; font-size: 11px; padding: 3px 4px; text-transform: capitalize; }
+#cb-viewer .past-img { width: 100%; max-width: 800px; height: auto; aspect-ratio: 1/1; margin-top: 4px; }
+#cb-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.cb-section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 14px 8px; margin-bottom: 12px; }
+.cb-section-title { font-weight: bold; margin: 10px 0 0; }
+#cb-download-status { min-height: 1.2em; }
+@media (max-width: 1100px) {
+    #cb-layout { grid-template-columns: 1fr; }
+    #cb-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
 </style>
 </head>
 <body>
@@ -286,12 +332,17 @@ font-size: 14px;
 <div class="top-row">
 
     <!-- LIVE FEED -->
-    <div class="imagecontainer">
+    <div class="imagecontainer panel">
         <p style="font-size: xx-large;">Organoids Live Feed</p>
         <img id="camera_feed" src="/video"
              onerror="document.getElementById('stream_status').textContent='⚠ Stream unavailable.'"
              onload="document.getElementById('stream_status').textContent=''">
         <div id="stream_status"></div>
+
+        <div id="scan-lock-notice" style="display:none;">
+            <span id="scan-lock-text"></span>
+            <button id="scan-unlock-btn" type="button">Unlock anyway</button>
+        </div>
 
         <div class="controls-row">
 
@@ -332,7 +383,7 @@ font-size: 14px;
     </div>
 
     <!-- SYSTEM PARAMETERS -->
-    <div class="slidecontainer">
+    <div class="slidecontainer panel">
         <p style="font-size: xx-large;">System Parameters</p>
 
         <!-- Zoom -->
@@ -582,15 +633,6 @@ font-size: 14px;
             margin-bottom: 12px;
         "></div>
 
-        <br>
-        <!-- Download -->
-        <p style="font-size: x-large;">Download Images from T1 to T2</p>
-        <p>
-            From: <input id="datetime_from" type="datetime-local">
-            &nbsp; To: <input id="datetime_to" type="datetime-local">
-        </p>
-        <button class="downloadbutton">Download</button>
-        <p id="download_success"></p>
     </div>
 </div>
 
@@ -599,14 +641,55 @@ font-size: 14px;
 ════════════════════════════════════ -->
 <div class="bottom-row">
 
-    <div class="pastimagecontainer">
-        <p style="font-size: xx-large;">Retrieve Past Image</p>
-        <input id="datetime" type="datetime-local">
-        <button class="getbutton">GET</button>
-        <img class="past-img" id="past_image" src="">
+    <div class="pastimagecontainer panel" id="capture-browser">
+        <p style="font-size: xx-large;">Image Browser</p>
+
+        <div id="cb-layout">
+            <div id="cb-left">
+                <div class="cb-section">
+                    <div class="cb-row">
+                        <button id="cb-prev-day" type="button" title="Previous day with scans">&#9664;</button>
+                        <input id="cb-date" type="date">
+                        <button id="cb-next-day" type="button" title="Next day with scans">&#9654;</button>
+                        <button id="cb-latest" type="button">Latest</button>
+                        <span id="cb-date-info" class="cb-muted"></span>
+                    </div>
+
+                    <div id="cb-scan-times" class="cb-row"></div>
+                    <div id="cb-message" class="cb-muted"></div>
+                    <div id="cb-grid"></div>
+
+                    <div class="cb-row" id="cb-actions">
+                        <button id="cb-select-all" type="button">Select all shown</button>
+                        <button id="cb-select-none" type="button">Clear</button>
+                        <button id="cb-download-selected" type="button" disabled>Download selected</button>
+                    </div>
+                </div>
+
+                <div class="cb-section" id="cb-range">
+                    <p class="cb-section-title">Download a time range</p>
+                    <div class="cb-row">
+                        From <input id="datetime_from" type="datetime-local">
+                        To <input id="datetime_to" type="datetime-local">
+                        <button id="cb-download-range" type="button">Download range</button>
+                    </div>
+                </div>
+
+                <div id="cb-download-status" class="cb-muted"></div>
+            </div>
+
+            <div id="cb-viewer" class="cb-section" style="display:none;">
+                <div class="cb-row">
+                    <button id="cb-prev-image" type="button" title="Previous image (left arrow)">&#9664;</button>
+                    <span id="cb-caption"></span>
+                    <button id="cb-next-image" type="button" title="Next image (right arrow)">&#9654;</button>
+                </div>
+                <img id="past_image" class="past-img" alt="">
+            </div>
+        </div>
     </div>
 
-    <div class="organoiddetectioncontainer">
+    <div class="organoiddetectioncontainer panel">
         <p style="font-size: xx-large;">Detect Organoids</p>
         <button class="detectorganoid">DETECT</button>
         <img class="detect-img" id="detection_image" src="">
@@ -638,24 +721,15 @@ socket.on('new_action', function(data) {
     }
 });
 
-// Past image result
-socket.on('past_image_result', function(msg) {
-    var img = document.getElementById('past_image');
-    img.src = msg.data === false ? "image_not_available.png"
-                                 : "data:image/jpeg;base64," + msg.data;
-});
-
 // Detection result
-socket.on('detection_result', function(msg) {
-    if (msg.data) {
-        document.getElementById('detection_image').src =
-            "data:image/jpeg;base64," + msg.data;
-    }
+socket.on('response3', function(msg) {
+    document.getElementById('detection_image').src =
+        "data:image/jpeg;base64," + msg.data;
 });
 
 // System parameters sync on load
-socket.on('system_parameters', function(msg) {
-    var r = msg.data;
+socket.on('system_parameters_to_html', function(msg) {
+    var r = msg.data.data;
     $("#zoom_text").html(r.zoom);          $("#zoom_slider").val(r.zoom);
     $("#focus_text").html(r.focus);        $("#focus_slider").val(r.focus);
     $("#motor_text").html(r.motor_speed);  $("#motor_slider").val(r.motor_speed);
@@ -668,7 +742,7 @@ socket.on('system_parameters', function(msg) {
 // =========================
 $("#led-btn").click(function() {
     $.get("/led_toggle", function(state) {
-        if (state === "1" || state === "True") {
+        if (state === "1") {
             $("#led-btn").addClass("on");
         } else {
             $("#led-btn").removeClass("on");
@@ -694,6 +768,7 @@ socket.on('scan_status', function(msg) {
     if (msg.next_scan && msg.next_scan !== "Calculating..." && msg.next_scan !== "—") {
         updateCountdown(msg.next_scan);
     }
+    setScanRunning(!!msg.running);
     if (msg.running) {
         $("#scan_box").addClass("scan-running");
         $("#scannowbtn").prop("disabled", true).text("Scanning...");
@@ -708,12 +783,104 @@ socket.on('scan_status', function(msg) {
 // =========================
 // MOTION CONTROLS
 // =========================
-$("#btn-forward").click(function()  { $.get("/forward"); });
-$("#btn-backward").click(function() { $.get("/backward"); });
-$("#btn-left").click(function()     { $.get("/left"); });
-$("#btn-right").click(function()    { $.get("/right"); });
-$("#btn-up").click(function()       { $.get("/up"); });
-$("#btn-down").click(function()     { $.get("/down"); });
+// Press moves once; holding repeats until release. The server drops a request
+// while the axis is still moving, so the repeat interval only needs to be short.
+var HOLD_REPEAT_MS = 100;
+
+var scanRunning  = false;
+var scanOverride = false;  // user confirmed manual moves for the current scan
+var MOVE_BUTTONS = "#btn-forward, #btn-backward, #btn-left, #btn-right, #btn-up, #btn-down";
+
+function updateMotionLock() {
+    $(MOVE_BUTTONS).prop("disabled", scanRunning && !scanOverride);
+    $("#scan-lock-notice").toggle(scanRunning);
+    $("#scan-unlock-btn").toggle(!scanOverride);
+    $("#scan-lock-text").text(scanOverride
+        ? "Manual override active. The rest of this scan will be misaligned."
+        : "Scan in progress: manual movement is locked.");
+}
+
+function setScanRunning(running) {
+    scanRunning = running;
+    if (!running) scanOverride = false;
+    updateMotionLock();
+}
+
+$("#scan-unlock-btn").click(function() {
+    var confirmed = confirm(
+        "A scan is running. Moving the stage manually will shift the remaining " +
+        "chamber positions, because the motors have no position feedback.\n\n" +
+        "Unlock manual movement anyway?");
+    if (confirmed) {
+        scanOverride = true;
+        updateMotionLock();
+    }
+});
+
+function moveParams(isRepeat) {
+    var params = {};
+    if (isRepeat)     params.repeat   = 1;
+    if (scanOverride) params.override = 1;
+    return params;
+}
+
+function bindHoldToMove(buttonId, url) {
+    var repeatTimer = null;
+    var pressStartMs = 0;
+    var burstsAccepted = 0;   // responses of "OK"; the server answers "BUSY" mid-burst
+    var requestsInFlight = 0;
+    var reportWhenSettled = false;
+
+    function sendMove(isRepeat) {
+        requestsInFlight++;
+        $.get(url, moveParams(isRepeat))
+            .done(function(response) { if (response === "OK") burstsAccepted++; })
+            .always(function() {
+                requestsInFlight--;
+                if (reportWhenSettled && requestsInFlight === 0) reportHoldEnd();
+            });
+    }
+
+    // A single tap is already in the log as the press, so only report real holds
+    function reportHoldEnd() {
+        reportWhenSettled = false;
+        if (burstsAccepted <= 1) return;
+        $.get("/move_hold_end", {
+            direction: url.slice(1),
+            seconds: ((Date.now() - pressStartMs) / 1000).toFixed(1),
+            bursts: burstsAccepted
+        });
+    }
+
+    function stopRepeating() {
+        if (repeatTimer === null) return;
+        clearInterval(repeatTimer);
+        repeatTimer = null;
+        // The count is only final once the last responses have come back
+        if (requestsInFlight === 0) reportHoldEnd(); else reportWhenSettled = true;
+    }
+
+    $(buttonId).on("pointerdown", function(event) {
+        if (event.button !== 0 || repeatTimer !== null) return;
+        pressStartMs = Date.now();
+        burstsAccepted = 0;
+        sendMove(false);
+        repeatTimer = setInterval(function() { sendMove(true); }, HOLD_REPEAT_MS);
+    });
+    // Listen on window so releasing the pointer off the button still stops it
+    $(window).on("pointerup pointercancel blur", stopRepeating);
+    // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
+    $(buttonId).on("click", function(event) {
+        if (event.detail === 0) $.get(url, moveParams(false));
+    });
+}
+
+bindHoldToMove("#btn-forward",  "/forward");
+bindHoldToMove("#btn-backward", "/backward");
+bindHoldToMove("#btn-left",     "/left");
+bindHoldToMove("#btn-right",    "/right");
+bindHoldToMove("#btn-up",       "/up");
+bindHoldToMove("#btn-down",     "/down");
 $("#btn-stop").click(function()     { $.get("/stop"); });
 
 
@@ -755,8 +922,11 @@ function dcSend(ch, speed, direction, duration) {
     updateDcStatus(ch, speed, direction);
 }
  
+var dcDirection = {};  // channel -> 'FORWARD' | 'BACKWARD' | 'STOP', as last known
+
 function updateDcStatus(ch, speed, direction) {
     var el = $('#dc-st-' + ch);
+    dcDirection[ch] = (speed == 0) ? 'STOP' : direction;
     el.removeClass('running reverse');
     if (direction === 'STOP' || speed == 0) {
         el.text('● Stopped');
@@ -768,12 +938,25 @@ function updateDcStatus(ch, speed, direction) {
 }
  
 // Speed slider labels
-$(document).on('input', '.dc-speed-slider', function() {
-    var ch  = $(this).data('ch');
-    var val = parseFloat($(this).val()).toFixed(2);
-    $('#dc-sv-' + ch).text(val);
-});
+function syncDcSliderLabel(slider) {
+    $('#dc-sv-' + $(slider).data('ch')).text(parseFloat($(slider).val()).toFixed(2));
+}
+
+$(document).on('input', '.dc-speed-slider', function() { syncDcSliderLabel(this); });
+
+// Browsers can restore slider positions without firing 'input'
+$(window).on('pageshow', function() { $('.dc-speed-slider').each(function() { syncDcSliderLabel(this); }); });
  
+// Releasing a slider on a running channel applies the new speed immediately.
+// Re-sends the duration field, which restarts that channel's auto-stop timer.
+$(document).on('change', '.dc-speed-slider', function() {
+    var ch = $(this).data('ch');
+    var direction = dcDirection[ch];
+    if (direction !== 'FORWARD' && direction !== 'BACKWARD') return;
+    var dur = parseFloat($('#dc-duration').val()) || 0;
+    dcSend(ch, parseFloat($(this).val()), direction, dur);
+});
+
 // Forward button
 $(document).on('click', '.btn-fwd', function() {
     var ch   = $(this).data('ch');
@@ -821,26 +1004,24 @@ $('#dc-all-rev').click(function() {
     }
 });
  
-// Poll live state every 5 s (syncs UI if server auto-stopped after duration)
+// Poll live state every 2 s (syncs status text if server auto-stopped after duration).
+// Sliders are the pending speed for the next Fwd/Rev press, so they are not synced.
 setInterval(function() {
     $.getJSON('/dc_motor_states', function(states) {
         $.each(states, function(ch, throttle) {
             ch = parseInt(ch);
             var speed = Math.abs(throttle);
             var dir   = throttle > 0 ? 'FORWARD' : throttle < 0 ? 'BACKWARD' : 'STOP';
-            // Sync slider
-            $('.dc-speed-slider[data-ch=' + ch + ']').val(speed);
-            $('#dc-sv-' + ch).text(speed.toFixed(2));
             updateDcStatus(ch, speed, dir);
         });
     });
-}, 5000);
+}, 2000);
 
 // =========================
 // AUTOFOCUS
 // =========================
 $(".autofocusbutton").click(function() {
-    $.getJSON({ type:"GET", url:'/autofocus' });
+    $.getJSON({ type:"GET", url:'/autofocus_camera_from_html' });
 });
 
 
@@ -868,13 +1049,6 @@ $("#position-modal-overlay").click(function(e) {
     }
 });
 
-// =========================
-// RETRIEVE PAST IMAGE
-// =========================
-$(".getbutton").click(function() {
-    var dt = $("#datetime").val();
-    if (dt) { $.getJSON({ type:"GET", url:'/retrieve_past_image', data: { datetime: dt } }); }
-});
 
 
 // =========================
@@ -886,23 +1060,184 @@ $(".detectorganoid").click(function() {
 
 
 // =========================
-// DOWNLOAD
+// IMAGE BROWSER
 // =========================
-$(".downloadbutton").click(function() {
-    var from = $("#datetime_from").val();
-    var to   = $("#datetime_to").val();
-    if (from && to && to > from) {
-        $("#download_success").html("Preparing download...");
-        $.getJSON({ type:"GET", url:'/prepare_download_images', data: { from:from, to:to } });
-        setTimeout(function() {
-            window.open('/download_images?from=' + encodeURIComponent(from) +
-                        '&to='  + encodeURIComponent(to), '_blank');
-        }, 3000);
-    } else {
-        $("#download_success").html("Invalid date range — 'To' must be after 'From'.");
-    }
-    setTimeout(function() { $("#download_success").html(""); }, 8000);
+var captureBrowser = {
+    dates: [],          // [{date, scans}] newest first
+    date: null,
+    scans: [],          // scans on the current date
+    scanIndex: -1,
+    shown: [],          // captures of the current scan
+    viewIndex: -1,
+    selected: {}        // capture name -> bytes; survives changing scan or date
+};
+
+function formatBytes(bytes) {
+    if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function cbSetMessage(text) { $("#cb-message").text(text); }
+
+function cbLoadDates(thenShowLatest) {
+    $.getJSON("/captures/dates", function(response) {
+        captureBrowser.dates = response.dates;
+        if (response.dates.length === 0) {
+            cbSetMessage("No captures in the cloud yet.");
+            return;
+        }
+        var newest = response.dates[0].date;
+        var oldest = response.dates[response.dates.length - 1].date;
+        $("#cb-date").attr({ min: oldest, max: newest });
+        if (thenShowLatest) cbShowDate(newest);
+    }).fail(function() { cbSetMessage("Could not load the list of captures."); });
+}
+
+function cbShowDate(date) {
+    captureBrowser.date = date;
+    $("#cb-date").val(date);
+    $("#cb-date-info").text("");
+    $("#cb-scan-times, #cb-grid").empty();
+    $("#cb-viewer").hide();
+    cbSetMessage("Loading...");
+    $.getJSON("/captures/scans", { date: date }, function(response) {
+        captureBrowser.scans = response.scans;
+        $("#cb-date-info").text(response.scans.length + " scan" + (response.scans.length === 1 ? "" : "s"));
+        if (response.scans.length === 0) {
+            cbSetMessage("No scans on this date. Use the arrows to jump to a day that has scans.");
+            captureBrowser.scanIndex = -1;
+            captureBrowser.shown = [];
+            return;
+        }
+        cbSetMessage("");
+        response.scans.forEach(function(scan, index) {
+            $("<button type='button' class='cb-time'>").text(scan.time).data("index", index)
+                .appendTo("#cb-scan-times");
+        });
+        cbShowScan(response.scans.length - 1);   // latest scan of the day
+    }).fail(function() { cbSetMessage("Could not load scans for this date."); });
+}
+
+function cbShowScan(index) {
+    captureBrowser.scanIndex = index;
+    captureBrowser.shown = captureBrowser.scans[index].captures;
+    $(".cb-time").each(function() { $(this).toggleClass("active", $(this).data("index") === index); });
+    $("#cb-grid").empty();
+    captureBrowser.shown.forEach(function(capture, position) {
+        var card = $("<div class='cb-card'>").data("position", position);
+        $("<img loading='lazy' alt=''>").attr("src", "/captures/image/" + capture.name + "?thumb=1")
+            .addClass("cb-thumb").appendTo(card);
+        $("<input type='checkbox' class='cb-check'>").prop("checked", !!captureBrowser.selected[capture.name])
+            .attr("title", "Select for download").appendTo(card);
+        $("<div class='cb-label'>").text(capture.chamber.replace("_", " ") + " " + capture.time).appendTo(card);
+        card.appendTo("#cb-grid");
+    });
+    cbShowImage(0);
+}
+
+function cbShowImage(position) {
+    var shown = captureBrowser.shown;
+    if (shown.length === 0) return;
+    position = (position + shown.length) % shown.length;
+    captureBrowser.viewIndex = position;
+    var capture = shown[position];
+    $("#past_image").attr("src", "/captures/image/" + capture.name);
+    $("#cb-caption").text(capture.chamber.replace("_", " ") + " \u00b7 " + captureBrowser.date + " " +
+                          capture.time + " (" + (position + 1) + "/" + shown.length + ")");
+    $(".cb-card").each(function() { $(this).toggleClass("viewing", $(this).data("position") === position); });
+    $("#cb-viewer").show();
+}
+
+function cbUpdateSelection() {
+    var names = Object.keys(captureBrowser.selected);
+    var total = names.reduce(function(sum, name) { return sum + captureBrowser.selected[name]; }, 0);
+    $("#cb-download-selected").prop("disabled", names.length === 0)
+        .text(names.length === 0 ? "Download selected"
+              : "Download " + names.length + " selected (" + formatBytes(total) + ")");
+}
+
+// Fetch as a blob rather than navigating, so an error shows here and the page is not replaced
+function cbDownloadZip(query, button) {
+    var label = button.text();
+    button.prop("disabled", true);
+    $("#cb-download-status").removeClass("cb-error").text("Preparing zip...");
+    fetch("/captures/zip?" + query).then(function(response) {
+        if (!response.ok) {
+            return response.json().then(function(body) { throw new Error(body.error || "Download failed"); });
+        }
+        var filename = (response.headers.get("Content-Disposition") || "").split("filename=")[1] || "captures.zip";
+        return response.blob().then(function(blob) {
+            var link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = filename.replace(/"/g, "");
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(function() { URL.revokeObjectURL(link.href); }, 10000);
+            $("#cb-download-status").text("Downloaded " + formatBytes(blob.size));
+        });
+    }).catch(function(error) {
+        $("#cb-download-status").addClass("cb-error").text(error.message);
+    }).then(function() {
+        button.prop("disabled", false).text(label);
+        cbUpdateSelection();
+    });
+}
+
+$(document).on("click", ".cb-time", function() { cbShowScan($(this).data("index")); });
+$(document).on("click", ".cb-thumb", function() { cbShowImage($(this).closest(".cb-card").data("position")); });
+$(document).on("change", ".cb-check", function() {
+    var capture = captureBrowser.shown[$(this).closest(".cb-card").data("position")];
+    if (this.checked) captureBrowser.selected[capture.name] = capture.bytes;
+    else delete captureBrowser.selected[capture.name];
+    cbUpdateSelection();
 });
+
+$("#cb-select-all").click(function() {
+    captureBrowser.shown.forEach(function(capture) { captureBrowser.selected[capture.name] = capture.bytes; });
+    $(".cb-check").prop("checked", true);
+    cbUpdateSelection();
+});
+$("#cb-select-none").click(function() {
+    captureBrowser.selected = {};
+    $(".cb-check").prop("checked", false);
+    cbUpdateSelection();
+});
+
+$("#cb-download-selected").click(function() {
+    cbDownloadZip($.param({ name: Object.keys(captureBrowser.selected) }, true), $(this));
+});
+$("#cb-download-range").click(function() {
+    var from = $("#datetime_from").val(), to = $("#datetime_to").val();
+    if (!from || !to || to < from) {
+        $("#cb-download-status").addClass("cb-error").text("Choose a From and a To, with To after From.");
+        return;
+    }
+    cbDownloadZip($.param({ from: from, to: to }), $(this));
+});
+
+$("#cb-date").change(function() { if ($(this).val()) cbShowDate($(this).val()); });
+$("#cb-latest").click(function() { cbLoadDates(true); });
+function cbStepDay(direction) {   // direction -1 = older, +1 = newer (dates are listed newest first)
+    var dates = captureBrowser.dates.map(function(entry) { return entry.date; });
+    var candidates = dates.filter(function(date) {
+        return direction < 0 ? date < captureBrowser.date : date > captureBrowser.date;
+    });
+    if (candidates.length === 0) return;
+    cbShowDate(direction < 0 ? candidates[0] : candidates[candidates.length - 1]);
+}
+$("#cb-prev-day").click(function() { cbStepDay(-1); });
+$("#cb-next-day").click(function() { cbStepDay(1); });
+$("#cb-prev-image").click(function() { cbShowImage(captureBrowser.viewIndex - 1); });
+$("#cb-next-image").click(function() { cbShowImage(captureBrowser.viewIndex + 1); });
+
+$(document).on("keydown", function(event) {
+    if ($(event.target).is("input, textarea, select") || $("#cb-viewer").is(":hidden")) return;
+    if (event.key === "ArrowLeft")  cbShowImage(captureBrowser.viewIndex - 1);
+    if (event.key === "ArrowRight") cbShowImage(captureBrowser.viewIndex + 1);
+});
+
+cbLoadDates(true);
 
 
 // =========================
@@ -948,7 +1283,7 @@ updateCountdown(data.next_scan);
 function updateHardwareBanner(disconnected) {
     var banner = document.getElementById('hardware-error-banner');
     if (disconnected && disconnected.length > 0) {
-        banner.textContent = '⚠ Disconnected Hardware: ' + disconnected.join('  |  ');
+        banner.textContent = '\u26a0 Disconnected Hardware: ' + disconnected.join('  |  ');
         banner.style.display = 'block';
     } else {
         banner.style.display = 'none';
@@ -960,7 +1295,8 @@ socket.on('hardware_status', function(msg) {
 });
 
 window.onload = function() {
-    $.getJSON({ type:"GET", url:'/system_parameters' });
+    $.getJSON({ type:"GET", url:'/get_system_parameters_from_html' });
+    $.getJSON('/scan_status', function(data) { setScanRunning(!!data.running); });
     $.getJSON('/hardware_status', function(data) {
         updateHardwareBanner(data.disconnected);
     });
