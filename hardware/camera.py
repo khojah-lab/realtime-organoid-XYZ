@@ -65,7 +65,10 @@ def capture_bgr_frame() -> np.ndarray | None:
         frame = request.make_array("main")
         request.release()
 
-    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    # In hardware/camera.py -> capture_bgr_frame()
+    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)  # or ROTATE_180, ROTATE_90_COUNTERCLOCKWISE
+    return frame
 
 
 def get_latest_frame() -> np.ndarray | None:
