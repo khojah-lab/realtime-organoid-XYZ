@@ -248,6 +248,17 @@ font-size: 14px;
     cursor: pointer;
 }
 .modal-btn-no:hover { background: #ddd; }
+/* ── PANELS: every page section gets its own border ── */
+.panel {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 30px 0 0 50px;
+}
+.panel > p:first-child { margin-top: 0; }
+#capture-browser { flex: 1 1 calc(100% - 100px); width: auto; margin-right: 50px; }
+
 /* ── IMAGE BROWSER ── */
 #capture-browser button, #capture-browser input { font-size: 14px; }
 .cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
@@ -259,15 +270,21 @@ font-size: 14px;
 }
 .cb-row button:disabled { opacity: 0.45; cursor: not-allowed; }
 .cb-time.active { background: #4CAF50; color: white; border-color: #388E3C; }
-#cb-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; max-width: 800px; }
+#cb-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
 .cb-card { position: relative; border: 2px solid transparent; border-radius: 6px; background: #111; }
 .cb-card.viewing { border-color: #4CAF50; }
 .cb-thumb { width: 100%; display: block; cursor: pointer; border-radius: 4px; aspect-ratio: 1/1; object-fit: cover; }
 .cb-check { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; cursor: pointer; }
 .cb-label { color: #ddd; font-size: 11px; padding: 3px 4px; text-transform: capitalize; }
-#cb-range { margin: 6px 0 12px; }
-#cb-range summary { cursor: pointer; }
-#cb-viewer .past-img { margin-top: 4px; max-width: 100%; height: auto; aspect-ratio: 1/1; }
+#cb-viewer .past-img { width: 100%; max-width: 800px; height: auto; aspect-ratio: 1/1; margin-top: 4px; }
+#cb-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.cb-section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 14px 8px; margin-bottom: 12px; }
+.cb-section-title { font-weight: bold; margin: 10px 0 0; }
+#cb-download-status { min-height: 1.2em; }
+@media (max-width: 1100px) {
+    #cb-layout { grid-template-columns: 1fr; }
+    #cb-grid { grid-template-columns: repeat(3, 1fr); }
+}
 
 </style>
 </head>
@@ -315,7 +332,7 @@ font-size: 14px;
 <div class="top-row">
 
     <!-- LIVE FEED -->
-    <div class="imagecontainer">
+    <div class="imagecontainer panel">
         <p style="font-size: xx-large;">Organoids Live Feed</p>
         <img id="camera_feed" src="/video"
              onerror="document.getElementById('stream_status').textContent='⚠ Stream unavailable.'"
@@ -366,7 +383,7 @@ font-size: 14px;
     </div>
 
     <!-- SYSTEM PARAMETERS -->
-    <div class="slidecontainer">
+    <div class="slidecontainer panel">
         <p style="font-size: xx-large;">System Parameters</p>
 
         <!-- Zoom -->
@@ -624,48 +641,55 @@ font-size: 14px;
 ════════════════════════════════════ -->
 <div class="bottom-row">
 
-    <div class="pastimagecontainer" id="capture-browser">
+    <div class="pastimagecontainer panel" id="capture-browser">
         <p style="font-size: xx-large;">Image Browser</p>
 
-        <div class="cb-row">
-            <button id="cb-prev-day" type="button" title="Previous day with scans">&#9664;</button>
-            <input id="cb-date" type="date">
-            <button id="cb-next-day" type="button" title="Next day with scans">&#9654;</button>
-            <button id="cb-latest" type="button">Latest</button>
-            <span id="cb-date-info" class="cb-muted"></span>
-        </div>
+        <div id="cb-layout">
+            <div id="cb-left">
+                <div class="cb-section">
+                    <div class="cb-row">
+                        <button id="cb-prev-day" type="button" title="Previous day with scans">&#9664;</button>
+                        <input id="cb-date" type="date">
+                        <button id="cb-next-day" type="button" title="Next day with scans">&#9654;</button>
+                        <button id="cb-latest" type="button">Latest</button>
+                        <span id="cb-date-info" class="cb-muted"></span>
+                    </div>
 
-        <div id="cb-scan-times" class="cb-row"></div>
-        <div id="cb-message" class="cb-muted"></div>
-        <div id="cb-grid"></div>
+                    <div id="cb-scan-times" class="cb-row"></div>
+                    <div id="cb-message" class="cb-muted"></div>
+                    <div id="cb-grid"></div>
 
-        <div class="cb-row" id="cb-actions">
-            <button id="cb-select-all" type="button">Select all shown</button>
-            <button id="cb-select-none" type="button">Clear</button>
-            <button id="cb-download-selected" type="button" disabled>Download selected</button>
-            <span id="cb-download-status" class="cb-muted"></span>
-        </div>
+                    <div class="cb-row" id="cb-actions">
+                        <button id="cb-select-all" type="button">Select all shown</button>
+                        <button id="cb-select-none" type="button">Clear</button>
+                        <button id="cb-download-selected" type="button" disabled>Download selected</button>
+                    </div>
+                </div>
 
-        <details id="cb-range">
-            <summary>Download a time range</summary>
-            <div class="cb-row">
-                From <input id="datetime_from" type="datetime-local">
-                To <input id="datetime_to" type="datetime-local">
-                <button id="cb-download-range" type="button">Download range</button>
+                <div class="cb-section" id="cb-range">
+                    <p class="cb-section-title">Download a time range</p>
+                    <div class="cb-row">
+                        From <input id="datetime_from" type="datetime-local">
+                        To <input id="datetime_to" type="datetime-local">
+                        <button id="cb-download-range" type="button">Download range</button>
+                    </div>
+                </div>
+
+                <div id="cb-download-status" class="cb-muted"></div>
             </div>
-        </details>
 
-        <div id="cb-viewer" style="display:none;">
-            <div class="cb-row">
-                <button id="cb-prev-image" type="button" title="Previous image (left arrow)">&#9664;</button>
-                <span id="cb-caption"></span>
-                <button id="cb-next-image" type="button" title="Next image (right arrow)">&#9654;</button>
+            <div id="cb-viewer" class="cb-section" style="display:none;">
+                <div class="cb-row">
+                    <button id="cb-prev-image" type="button" title="Previous image (left arrow)">&#9664;</button>
+                    <span id="cb-caption"></span>
+                    <button id="cb-next-image" type="button" title="Next image (right arrow)">&#9654;</button>
+                </div>
+                <img id="past_image" class="past-img" alt="">
             </div>
-            <img id="past_image" class="past-img" alt="">
         </div>
     </div>
 
-    <div class="organoiddetectioncontainer">
+    <div class="organoiddetectioncontainer panel">
         <p style="font-size: xx-large;">Detect Organoids</p>
         <button class="detectorganoid">DETECT</button>
         <img class="detect-img" id="detection_image" src="">
