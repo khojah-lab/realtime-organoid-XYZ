@@ -121,6 +121,7 @@ def run_detection() -> None:
             print("[DETECTION] No frame available")
             payload = {"data": None, "error": "No frame available"}
             emit_socket_event("detection_result", payload)
+            emit_socket_event("response3", payload)
             return
 
         result_frame = None
@@ -172,14 +173,18 @@ def run_detection() -> None:
         if result_frame is not None:
             _, buf = cv2.imencode(".jpg", result_frame)
             b64 = base64.b64encode(buf).decode("utf-8")
-            emit_socket_event("detection_result", {"data": b64, "count": count})
+            payload = {"data": b64, "count": count}
+            emit_socket_event("detection_result", payload)
+            emit_socket_event("response3", payload)
             print(f"[DETECTION] Detection complete. Found {count} objects")
         else:
-            emit_socket_event(
-                "detection_result", {"data": None, "error": "Detection failed"}
-            )
+            payload = {"data": None, "error": "Detection failed"}
+            emit_socket_event("detection_result", payload)
+            emit_socket_event("response3", payload)
 
     except Exception as e:
         print(f"[DETECTION] Error: {e}")
         traceback.print_exc()
-        emit_socket_event("detection_result", {"data": None, "error": str(e)})
+        payload = {"data": None, "error": str(e)}
+        emit_socket_event("detection_result", payload)
+        emit_socket_event("response3", payload)

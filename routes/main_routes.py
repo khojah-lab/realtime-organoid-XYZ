@@ -60,6 +60,7 @@ def hardware_status():
 def get_system_parameters():
     """Push current system parameters, scan status, and hardware status over Socket.IO."""
     emit_socket_event("system_parameters", {"data": system_params})
+    emit_socket_event("system_parameters_to_html", {"data": {"data": system_params}})
     emit_socket_event("scan_status", get_scan_status())
     emit_socket_event("hardware_status", {"disconnected": get_disconnected_hardware()})
     return "OK"
