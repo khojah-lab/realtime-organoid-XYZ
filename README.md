@@ -4,9 +4,6 @@ This repository contains the software for controlling the **XYZ Organoid Imaging
 
 Lab drive: https://drive.google.com/drive/folders/1pTi2H-WdkrL60x7fensSTAS5a-E9sUcp?usp=drive_link
 
-lab secrets: https://docs.google.com/spreadsheets/d/1VQD1994L5gKGxoP8PO2QHVpyDeTH2WBEH_3-IMPY0Ls/edit?usp=sharing
-
-^^^ todo: fix authorizations... should probably make it more robust
 ## 🚀 Quick Start Guide
 
 ### 0. Connect to Tailscale
