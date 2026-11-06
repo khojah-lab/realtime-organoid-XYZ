@@ -1,0 +1,94 @@
+# Uneven Illumination Correction for Organoid Images
+
+## Overview
+
+"Uneven_illumination_processing" notebook tests several ways to reduce uneven illumination in organoid images. The main problem is that some areas are darker than others, making organoids harder to see and separate from the background. You may think that the black areas around the image are outside the microscope’s field of view. However, both the 2023 images and the 2026 images have bright edges without this black border. In the 2023 images, even when some black areas appear near the edges, cell structures can still be faintly seen within them. If these areas were outside the microscope’s field of view, they should be completely black. Therefore, I believe this is more likely an illumination problem.
+
+The final method was applied to the 2024 images from `test21.jpg` to `test40.jpg`. You could find the raw image and corrected image in foler "High_quality_image_23&24" and then go to subfolder "High_quality_image2024"
+
+## Methods Tested
+
+### 1. Gaussian Background Correction
+
+A strong Gaussian blur was used to estimate the illumination background. The original grayscale image was then divided by this background.
+
+Sigma values of 60, 120, and 180 were tested, along with different percentile settings for contrast stretching.
+
+This is a simple approach, but large dark organoids can affect the background estimate and create uneven brightness around them.
+
+### 2. Morphological Closing
+
+Morphological closing was used to fill dark objects in a temporary image and estimate the background. Three kernel sizes were tested: 35%, 50%, and 65% of the shorter image dimension.
+
+This approach depends on the kernel size and the size of the organoids. Large or closely spaced objects can make background estimation more difficult.
+
+### 3. CLAHE
+
+CLAHE was tested after closing-based correction to improve local contrast. Clip limits of 1.0 and 2.0 were tested with a 4 × 4 grid.
+
+It can make some details easier to see, but it can also make background texture and noise more visible.
+
+### 4. Hybrid Background Correction
+
+Gaussian and morphological closing background estimates were combined using different weights.
+
+This tested whether a mixture could give a better background estimate. However, the result still depended on the quality of both estimates.
+
+### 5. Polynomial Background Correction
+
+A smooth fourth-degree polynomial surface was fitted to the log brightness of a smaller version of each image.
+
+Dark organoids had less influence on the initial fit. Dark objects and unusually bright regions were then excluded before refining the background estimate.
+
+The original grayscale image was divided by the estimated background. A gentle highlight compression step reduced strong bright regions.
+
+## Final Method and Why It Was Chosen
+
+The final choice was polynomial background correction with highlight compression.
+
+It was selected through visual comparison because it provided a useful balance between reducing uneven illumination and keeping organoid outlines visible. The smooth background model was suitable for the broad lighting changes in this batch.
+
+The method estimates the background without directly blurring the original organoids. The final images also keep their original resolution.
+
+Additional brightness and contrast adjustment was tested separately. It made the images brighter, but did not clearly improve the useful detail enough to include it in the final pipeline.
+
+The selected output therefore includes illumination correction and highlight compression, without the extra brightness and contrast step.
+
+## Why the Same Method Was Used Across This Batch
+
+The 2024 images in this batch share a similar illumination problem and broadly similar image appearance. Using the same method and settings keeps processing consistent and avoids adjusting each image by eye.
+
+The background is still fitted separately for every image. The images share the same processing rules, but do not share one fixed background.
+
+The 2023 data contains more varied image conditions. Different images or groups may therefore need different methods. A method selected for this 2024 batch should not automatically be used for all 2023 images.
+
+## Improvements and Possible Benefits for Model Training
+
+The main visual improvement is a more even background, which can make organoids easier to distinguish from surrounding areas.
+
+This may help model training by:
+
+- Reducing brightness differences caused by illumination.
+- Helping the model focus on organoid shape and boundaries.
+- Reducing confusion between dark background regions and organoids.
+- Making manual annotation more consistent.
+
+These are potential benefits, not confirmed training results. Their effect should be checked by comparing model performance with and without correction, using the same data split.
+
+The same selected preprocessing pipeline should be applied consistently to training, validation, and test images.
+
+## Limitations
+
+Correction cannot recover missing detail or fix out-of-focus structures. Very dark regions may become noisier after correction, and some images may still have uneven backgrounds.
+
+Each result should be checked visually, especially around dark edges and large organoids. Original images should be kept for comparison.
+
+## Output
+
+Final images are saved in the `corrected` folder as:
+
+- `test21_corrected.png`
+- ...
+- `test40_corrected.png`
+
+The notebook displays the original image, estimated illumination, and corrected result for review.
