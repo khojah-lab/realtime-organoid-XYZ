@@ -1,8 +1,10 @@
 # Uneven Illumination Correction for Organoid Images
+## When to use it:
+Apply illumination correction only when uneven lighting makes target objects or their boundaries difficult to identify. Otherwise, keep the original image.
 
 ## Overview
 
-"Uneven_illumination_processing" notebook tests several ways to reduce uneven illumination in organoid images. The main problem is that some areas are darker than others, making organoids harder to see and separate from the background. You may think that the black areas around the image are outside the microscope’s field of view. However, both the 2023 images and the 2026 images have bright edges without this black border. In the 2023 images, even when some black areas appear near the edges, cell structures can still be faintly seen within them. If these areas were outside the microscope’s field of view, they should be completely black. Therefore, I believe this is more likely an illumination problem.
+"Uneven_illumination_processing" notebook tests several ways to reduce uneven illumination in organoid images. The main problem is that some areas are darker than others, making organoids harder to see and separate from the background. You may think that the black areas around the image are outside the microscope’s field of view. However, both the 2023 images and the 2024 images have bright edges without this black border. In the 2023 images, even when some black areas appear near the edges, cell structures can still be faintly seen within them. If these areas were outside the microscope’s field of view, they should be completely black. Therefore, I believe this is more likely an illumination problem. 
 
 The final method was applied to the 2024 images from `test21.jpg` to `test40.jpg`. You could find the raw image and corrected image in foler "High_quality_image_23&24" and then go to subfolder "High_quality_image2024"
 
