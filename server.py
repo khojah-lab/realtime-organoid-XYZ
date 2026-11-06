@@ -9,6 +9,8 @@ import os
 import base64
 import pytz
 from timing import Timer, log_event, set_socketio
+from captures import create_captures_blueprint
+from s3_upload import upload_pending_images
 
 # =========================
 # MOTOR + GPIO IMPORTS
@@ -172,12 +174,14 @@ def generate_frames():
 # =========================
 LA_TZ = pytz.timezone("America/Los_Angeles")
 
-BASE_DIR        = "/home/khojahlab/SpringXYZ"
+BASE_DIR        = os.environ.get("XYZ_BASE_DIR", "/home/khojahlab/SpringXYZ")
 IMAGE_DIR       = os.path.join(BASE_DIR, "images")
 IMAGES_BASE_DIR = os.path.join(BASE_DIR, "images_upload")
 
 os.makedirs(IMAGE_DIR,       exist_ok=True)
 os.makedirs(IMAGES_BASE_DIR, exist_ok=True)
+
+app.register_blueprint(create_captures_blueprint(IMAGE_DIR))
 
 STEPS_BETWEEN_CHAMBERS = 4000
 STEP_DELAY             = 0.005
@@ -296,6 +300,7 @@ def run_scan():
         print("[SCAN] Already running, skipping.")
         return
 
+    log_event("SCAN_START")
     scan_status["running"]      = True
     scan_status["current_step"] = "Starting scan..."
     socketio.emit('scan_status', scan_status, namespace='/')
@@ -367,6 +372,10 @@ def run_scan():
             scan_status["current_step"] = ""
             socketio.emit('scan_status', scan_status, namespace='/')
             print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
+
+            threading.Thread(
+                target=upload_pending_images, args=(IMAGES_BASE_DIR,), daemon=True
+            ).start()
 
 
 # =========================
@@ -510,38 +519,76 @@ def video():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # -- Motion --
+# Each request moves one short burst. The UI repeats requests while a button is
+# held, so a burst is dropped if the same axis is still moving (otherwise two
+# threads would step the same motor at once).
+axis_locks = {"x": threading.Lock(), "y": threading.Lock(), "z": threading.Lock()}
+
+def start_move(axis, move_function, event_name):
+    # Steppers have no position feedback, so a manual move during a scan
+    # shifts every remaining chamber. The UI sends override=1 after confirmation.
+    if scan_status["running"] and not request.args.get("override"):
+        if not request.args.get("repeat"):
+            log_event(f"{event_name}_REJECTED_SCAN_RUNNING")
+        return "SCAN_RUNNING", 409
+    if not request.args.get("repeat"):
+        log_event(event_name)
+    lock = axis_locks[axis]
+    if not lock.acquire(blocking=False):
+        return "BUSY"
+
+    def run():
+        try:
+            move_function()
+        finally:
+            lock.release()
+
+    threading.Thread(target=run).start()
+    return "OK"
+
 @app.route('/up')
 def up():
-    log_event("MOVE_UP")
-    threading.Thread(target=move_up).start(); return "OK"
+    return start_move("z", move_up, "MOVE_UP")
 
 @app.route('/down')
 def down():
-    log_event("MOVE_DOWN")
-    threading.Thread(target=move_down).start(); return "OK"
+    return start_move("z", move_down, "MOVE_DOWN")
 
 @app.route('/left')
 def left():
-    log_event("MOVE_LEFT")
-    threading.Thread(target=move_left).start(); return "OK"
+    return start_move("x", move_left, "MOVE_LEFT")
 
 @app.route('/right')
 def right():
-    log_event("MOVE_RIGHT")
-    threading.Thread(target=move_right).start(); return "OK"
+    return start_move("x", move_right, "MOVE_RIGHT")
 
 @app.route('/forward')
 def forward():
-    log_event("MOVE_FORWARD")
-    threading.Thread(target=move_backward).start(); return "OK"   # Y axis intentionally inverted
+    return start_move("y", move_backward, "MOVE_FORWARD")   # Y axis intentionally inverted
 
 @app.route('/backward')
 def backward():
-    log_event("MOVE_BACKWARD")
-    threading.Thread(target=move_forward).start(); return "OK"    # Y axis intentionally inverted
+    return start_move("y", move_forward, "MOVE_BACKWARD")   # Y axis intentionally inverted
+
+MOVE_DIRECTIONS = {"up", "down", "left", "right", "forward", "backward"}
+
+# Reported by the UI when an arrow is released after a hold (not for single taps)
+@app.route('/move_hold_end')
+def move_hold_end():
+    direction = request.args.get("direction", "")
+    if direction not in MOVE_DIRECTIONS:
+        return "Unknown direction", 400
+    try:
+        seconds = float(request.args.get("seconds", 0))
+        bursts  = int(request.args.get("bursts", 0))
+    except ValueError:
+        return "Bad number", 400
+    log_event(f"MOVE_{direction.upper()}_HELD_{seconds:.1f}s_{bursts}_BURSTS")
+    return "OK"
 
 @app.route('/stop')
 def stop():
+    log_event("STOP_RELEASE_STEPPERS")
     release_all(); return "OK"
 
 # -- Manual scan trigger --
@@ -576,6 +623,7 @@ def update_parameters_motor():
                 args=(speed, direction, duration)
             ).start()
 
+        log_event(f"DC_ALL_{flow_dir}_SPEED_{speed}_DUR_{duration}s")
         print(f"[MOTOR ALL] speed={speed} dir={flow_dir} dur={duration}s")
     except Exception as e:
         print(f"[MOTOR ALL] Error: {e}")
@@ -596,6 +644,7 @@ def dc_motor():
             daemon=True
         ).start()
 
+        log_event(f"DC_CH{ch}_{direction}_SPEED_{speed}_DUR_{duration}s")
         print(f"[DC CH{ch}] speed={speed} dir={direction} dur={duration}s")
     except Exception as e:
         print(f"[DC MOTOR] Error: {e}")
@@ -605,6 +654,7 @@ def dc_motor():
 @app.route('/dc_motor_stop')
 def dc_motor_stop():
     ch = request.args.get('ch')
+    log_event(f"DC_CH{ch}_STOP" if ch else "DC_ALL_STOP")
     if ch:
         threading.Thread(target=stop_motor_single, args=(int(ch),), daemon=True).start()
     else:
@@ -620,12 +670,14 @@ def dc_motor_states():
 def update_zoom_focus():
     system_params['zoom']  = request.args.get('zoom', 0)
     system_params['focus'] = request.args.get('focus', 0)
+    log_event(f"ZOOM_{system_params['zoom']}_FOCUS_{system_params['focus']}")
     print("ZOOM/FOCUS ->", system_params['zoom'], system_params['focus'])
     return "OK"
 
 # -- Autofocus --
 @app.route('/autofocus_camera_from_html')
 def autofocus():
+    log_event("AUTOFOCUS_REQUEST")
     print("AUTOFOCUS REQUEST")
     return "OK"
 
@@ -663,92 +715,6 @@ def detect_organoid():
     print("[DETECT] Starting organoid detection...")
     threading.Thread(target=run_detection).start()
     return jsonify({"success": True, "message": "Detection started"})
-
-# -- Retrieve past image --
-@app.route('/retrieve_past_image')
-def retrieve_past_image():
-    from image_download_script import fetch_image
-    dt_str = request.args.get('datetime')
-    try:
-        # Parse the datetime from the frontend
-        ts = datetime.datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
-        ts = LA_TZ.localize(ts)
-        
-        print(f"[RETRIEVE] Searching for image at: {ts}")
-        
-        # Download image from Swift storage
-        success = fetch_image(ts)
-        
-        if success:
-            print(f"[RETRIEVE] Download successful, looking for file...")
-            
-            # The download script saves to images_downloaded/ with timestamp in filename
-            # Look for the downloaded file
-            import glob
-            search_pattern = f"images_downloaded/*{ts.strftime('%d_%m_%Y_%H_%M')}*.png"
-            matching_files = glob.glob(search_pattern)
-            
-            if matching_files:
-                fpath = matching_files[0]
-                print(f"[RETRIEVE] Found file: {fpath}")
-                
-                if os.path.exists(fpath):
-                    img = cv2.imread(fpath)
-                    if img is not None:
-                        # Convert to jpg and send to frontend
-                        _, buf = cv2.imencode('.jpg', img)
-                        b64 = base64.b64encode(buf).decode('utf-8')
-                        socketio.emit('response2', {'data': b64}, namespace='/')
-                        return "OK"
-            
-            print(f"[RETRIEVE] File not found after download")
-        else:
-            print(f"[RETRIEVE] Download failed")
-        
-        # If we get here, image wasn't found
-        socketio.emit('response2', {'data': False}, namespace='/')
-        
-    except Exception as e:
-        print("retrieve_past_image error:", e)
-        import traceback
-        traceback.print_exc()
-        socketio.emit('response2', {'data': False}, namespace='/')
-    return "OK"
-# -- Download zip --
-@app.route('/prepare_download_images')
-def prepare_download():
-    from image_download_script import fetch_images_from_t1_to_t2
-    from_str = request.args.get('from')
-    to_str   = request.args.get('to')
-    try:
-        print(f"[DOWNLOAD] Preparing images from {from_str} to {to_str}")
-        
-        t1 = LA_TZ.localize(datetime.datetime.strptime(from_str, "%Y-%m-%dT%H:%M"))
-        t2 = LA_TZ.localize(datetime.datetime.strptime(to_str,   "%Y-%m-%dT%H:%M"))
-        
-        zip_path = fetch_images_from_t1_to_t2(t1, t2)
-        
-        if zip_path and os.path.exists(zip_path):
-            app.config['LAST_ZIP'] = zip_path
-            print(f"[DOWNLOAD] Zip created: {zip_path}")
-            return jsonify({"success": True})
-        else:
-            print("[DOWNLOAD] No images found in range")
-            return jsonify({"success": False, "error": "No images found in this time range"})
-            
-    except Exception as e:
-        print("prepare_download error:", e)
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route('/download_images')
-def download_images():
-    zip_path = app.config.get('LAST_ZIP')
-    if zip_path and os.path.exists(zip_path):
-        return send_file(zip_path, as_attachment=True)
-    return "No zip ready", 404
-
 
 def check_directories():
     dirs_to_check = [IMAGE_DIR, IMAGES_BASE_DIR, "/tmp"]
