@@ -13,7 +13,7 @@ Go to https://tailscale.com/download, and follow the instructions for your respe
 Ensure your computer is connected to the lab's **Tailscale** network, then SSH into the Raspberry Pi:
 
 ```bash
-ssh khojahlab@100.112.125.34
+ssh khojahlab@khojahlab
 ```
 
 ---
