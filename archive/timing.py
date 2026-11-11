@@ -10,7 +10,7 @@ import pytz
 
 LA_TZ = pytz.timezone("America/Los_Angeles")
 
-BASE_DIR = os.environ.get("XYZ_BASE_DIR", "/home/khojahlab/SpringXYZ")
+BASE_DIR = "/home/khojahlab/SpringXYZ"
 LOG_DIR  = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "actions.csv")
 os.makedirs(LOG_DIR, exist_ok=True)

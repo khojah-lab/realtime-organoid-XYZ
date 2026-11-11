@@ -13,7 +13,8 @@
 
 # If you have an entire folder dedicated to raw/captured images:
 # captures/
-# images/
+images/
+images_upload/
 # data/
 
 # ========================
@@ -21,6 +22,7 @@
 # ========================
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.token
@@ -39,12 +41,12 @@ Thumbs.db
 # ========================
 # Python (if you use Python scripts / Pi GPIO)
 # ========================
+.python-version
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-.python-version
 env/
 venv/
 .venv/

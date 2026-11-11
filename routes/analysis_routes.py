@@ -1,51 +1,94 @@
-"""Browse and download scan captures stored in S3.
-
-Captures are named <chamber>_<YYYYMMDD>_<HHMMSS>.jpg (see take_scan_photo in
-server.py) and stored under YYYY/MM/DD/HH/ (see s3_upload.py). Captures taken
-within SCAN_GAP of each other belong to one scan. Needs s3:ListBucket and
-s3:GetObject on the bucket.
 """
+routes/analysis_routes.py
+────────────────────────────────────────────────────────────────
+Routes for automated 6-well plate scanning, organoid detection,
+and browsing/downloading historical scan captures stored in S3.
+────────────────────────────────────────────────────────────────
+"""
+
 import datetime
 import io
 import os
 import re
 import tempfile
+import threading
 import time
 import zipfile
 
 import cv2
 import numpy as np
-from botocore.exceptions import ClientError
 from flask import Blueprint, jsonify, request, send_file
 
-from s3_upload import BUCKET, get_client, object_key
+try:
+    from botocore.exceptions import ClientError
+except ImportError:
+    class ClientError(Exception):
+        pass
 
-CAPTURE_NAME = re.compile(r"^(?P<chamber>[a-z_]+)_(?P<stamp>\d{8}_\d{6})\.jpg$")
-STAMP_FORMAT = "%Y%m%d_%H%M%S"
-INPUT_FORMAT = "%Y-%m-%dT%H:%M"
-SCAN_GAP     = datetime.timedelta(minutes=10)
-THUMBNAIL_WIDTH  = 320
-MAX_ZIP_FILES    = 1000
-MAX_ZIP_DAYS     = 366
-ZIP_MEMORY_LIMIT = 50 * 1024 * 1024
+from config import IMAGE_DIR
+from services.cloud_storage import BUCKET, get_client, object_key
+from services.detection import run_detection
+from services.scanner import get_scan_status, run_scan
+
+analysis_bp = Blueprint("analysis", __name__)
+
+CAPTURE_NAME        = re.compile(r"^(?P<chamber>[a-z_]+)_(?P<stamp>\d{8}_\d{6})\.jpg$")
+STAMP_FORMAT        = "%Y%m%d_%H%M%S"
+INPUT_FORMAT        = "%Y-%m-%dT%H:%M"
+SCAN_GAP            = datetime.timedelta(minutes=10)
+THUMBNAIL_WIDTH     = 320
+MAX_ZIP_FILES       = 1000
+MAX_ZIP_DAYS        = 366
+ZIP_MEMORY_LIMIT    = 50 * 1024 * 1024
 DATES_CACHE_SECONDS = 60
 
 
-def create_captures_blueprint(image_dir):
+# ── Automated 6-Well Plate Scan ───────────────────────────────
+@analysis_bp.route("/scan_now")
+def scan_now():
+    """Trigger an immediate 6-well automated scan in a background thread."""
+    threading.Thread(target=run_scan, daemon=True).start()
+    return "OK"
+
+
+@analysis_bp.route("/scan_status")
+def scan_status_route():
+    """Return current automated scan status for UI polling."""
+    return jsonify(get_scan_status())
+
+
+# ── Organoid Detection ────────────────────────────────────────
+@analysis_bp.route("/detect_organoid")
+def detect_organoid():
+    """Run organoid detection on the current camera frame."""
+    print("[DETECT] Starting organoid detection...")
+    threading.Thread(target=run_detection, daemon=True).start()
+    return jsonify({"success": True, "message": "Detection started"})
+
+
+# ── S3 Capture Browser & Bulk ZIP Download (`/captures`) ──────
+def create_captures_blueprint(image_dir=IMAGE_DIR) -> Blueprint:
+    """
+    Create the `/captures` blueprint for browsing and downloading scan captures stored in S3.
+    Captures are named `<chamber>_<YYYYMMDD>_<HHMMSS>.jpg` and stored under `YYYY/MM/DD/HH/`.
+    """
     blueprint     = Blueprint("captures", __name__, url_prefix="/captures")
-    thumbnail_dir = os.path.join(image_dir, ".thumbnails")
+    thumbnail_dir = os.path.join(str(image_dir), ".thumbnails")
 
     dates_cache = {"fetched": 0.0, "dates": []}
 
-    def list_prefixes(prefix):
-        """Names of the folders directly under prefix."""
+    def list_prefixes(prefix: str) -> list[str]:
+        """Names of the folders directly under `prefix`."""
         names = []
         paginator = get_client().get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=BUCKET, Prefix=prefix, Delimiter="/"):
-            names += [entry["Prefix"][len(prefix):-1] for entry in page.get("CommonPrefixes", [])]
+            names += [
+                entry["Prefix"][len(prefix):-1]
+                for entry in page.get("CommonPrefixes", [])
+            ]
         return names
 
-    def list_dates():
+    def list_dates() -> list[str]:
         """Every YYYY-MM-DD that has captures, newest first. Cached because it takes one S3 call per month."""
         if time.monotonic() - dates_cache["fetched"] > DATES_CACHE_SECONDS:
             dates = []
@@ -56,7 +99,7 @@ def create_captures_blueprint(image_dir):
             dates_cache.update(fetched=time.monotonic(), dates=sorted(dates, reverse=True))
         return dates_cache["dates"]
 
-    def list_day(day):
+    def list_day(day: datetime.date) -> list[dict]:
         """Captures taken on a date, oldest first."""
         captures = []
         paginator = get_client().get_paginator("list_objects_v2")
@@ -74,7 +117,7 @@ def create_captures_blueprint(image_dir):
         captures.sort(key=lambda capture: capture["taken"])
         return captures
 
-    def download(name):
+    def download(name: str) -> bytes | None:
         """Bytes of a capture, or None if it is not in the bucket."""
         try:
             return get_client().get_object(Bucket=BUCKET, Key=object_key(name))["Body"].read()
@@ -83,7 +126,7 @@ def create_captures_blueprint(image_dir):
                 return None
             raise
 
-    def group_into_scans(captures):
+    def group_into_scans(captures: list[dict]) -> list[list[dict]]:
         scans = []
         for capture in captures:
             if scans and capture["taken"] - scans[-1][-1]["taken"] <= SCAN_GAP:
@@ -92,7 +135,7 @@ def create_captures_blueprint(image_dir):
                 scans.append([capture])
         return scans
 
-    def describe(capture):
+    def describe(capture: dict) -> dict:
         return {
             "name":    capture["name"],
             "chamber": capture["chamber"],
@@ -112,16 +155,18 @@ def create_captures_blueprint(image_dir):
         except ValueError:
             return jsonify({"error": "date must be YYYY-MM-DD"}), 400
         day_captures = list_day(day)
-        return jsonify({"scans": [
-            {
-                "time":     scan[0]["taken"].strftime("%H:%M"),
-                "captures": [describe(capture) for capture in scan],
-            }
-            for scan in group_into_scans(day_captures)
-        ]})
+        return jsonify({
+            "scans": [
+                {
+                    "time":     scan[0]["taken"].strftime("%H:%M"),
+                    "captures": [describe(capture) for capture in scan],
+                }
+                for scan in group_into_scans(day_captures)
+            ]
+        })
 
     @blueprint.route("/image/<name>")
-    def image(name):
+    def image(name: str):
         if not CAPTURE_NAME.match(name):
             return jsonify({"error": "no such capture"}), 404
         thumbnail_path = os.path.join(thumbnail_dir, name)
@@ -151,7 +196,10 @@ def create_captures_blueprint(image_dir):
                 match = CAPTURE_NAME.match(name)
                 if not match:
                     return None, f"no such capture: {name}"
-                captures.append({"name": name, "taken": datetime.datetime.strptime(match["stamp"], STAMP_FORMAT)})
+                captures.append({
+                    "name":  name,
+                    "taken": datetime.datetime.strptime(match["stamp"], STAMP_FORMAT),
+                })
             return sorted(captures, key=lambda capture: capture["taken"]), None
         try:
             start = datetime.datetime.strptime(request.args.get("from", ""), INPUT_FORMAT)
@@ -190,7 +238,14 @@ def create_captures_blueprint(image_dir):
 
         first, last = captures[0]["taken"], captures[-1]["taken"]
         filename = f"captures_{first:%Y%m%d_%H%M}-{last:%Y%m%d_%H%M}.zip"
-        return send_file(archive_file, mimetype="application/zip",
-                         as_attachment=True, download_name=filename)
+        return send_file(
+            archive_file,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=filename,
+        )
 
     return blueprint
+
+
+captures_bp = create_captures_blueprint(IMAGE_DIR)

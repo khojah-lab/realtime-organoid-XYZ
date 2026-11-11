@@ -3,12 +3,16 @@
 
 import csv
 import os
+import sys
 import json
 import datetime
+from pathlib import Path
 from collections import defaultdict
 
-LOG_FILE   = "/home/khojahlab/SpringXYZ/logs/actions.csv"
-TIMING_DIR = "/home/khojahlab/SpringXYZ/timing_data"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from config import BASE_DIR, LOG_FILE
+
+TIMING_DIR = os.path.join(BASE_DIR, "timing_data")
 os.makedirs(TIMING_DIR, exist_ok=True)
 timestamp  = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT     = os.path.join(TIMING_DIR, f"timing_report_full_{timestamp}.html")
