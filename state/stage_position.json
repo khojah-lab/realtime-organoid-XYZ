@@ -1,0 +1,48 @@
+{
+  "updated_at": "2026-11-12T13:04:30",
+  "in_motion": false,
+  "position_uncertain": false,
+  "current_position": {
+    "x": 1500,
+    "y": 50,
+    "z": 0
+  },
+  "soft_limits": {
+    "min_x": -1800,
+    "max_x": 9400,
+    "min_y": -1200,
+    "max_y": 6500
+  },
+  "bookmarks": {
+    "bottom_left": [
+      0,
+      0
+    ],
+    "bottom_middle": [
+      4050,
+      0
+    ],
+    "bottom_right": [
+      8100,
+      0
+    ],
+    "top_left": [
+      0,
+      4250
+    ],
+    "top_middle": [
+      4050,
+      4250
+    ],
+    "top_right": [
+      8100,
+      4250
+    ]
+  },
+  "geometry": {
+    "well_radius_steps": 1500,
+    "step_x": 500,
+    "step_y": 500,
+    "move_settle_sec": 0.5
+  }
+}

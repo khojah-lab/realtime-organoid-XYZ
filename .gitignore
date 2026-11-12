@@ -60,6 +60,7 @@ dist/
 # ========================
 *.log
 logs/
+*.json.tmp
 *.sqlite
 *.sqlite3
 *.db
@@ -78,3 +79,7 @@ dist/
 # ========================
 .vscode/
 .idea/
+HANDOFF.md
+HORIZON.md
+HORIZON.MD
+
