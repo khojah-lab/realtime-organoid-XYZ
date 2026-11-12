@@ -64,6 +64,7 @@ CAMERA_STALL_TIMEOUT_SEC           = 5.0            # Max frame age before strea
 CAMERA_MAX_FAILURES_BEFORE_RESTART = 2              # Consecutive timeouts before cycling Picamera2
 
 # ── Stepper & 6-Well Scan Configuration ───────────────────────
+AUTO_SCAN_ENABLED      = os.getenv("AUTO_SCAN_ENABLED", "0") == "1"
 DEFAULT_MANUAL_STEPS   = 50
 STEPS_BETWEEN_CHAMBERS = 4000
 STEP_DELAY             = 0.005

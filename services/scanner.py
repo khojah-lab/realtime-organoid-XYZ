@@ -16,6 +16,7 @@ import cv2
 import pytz
 
 from config import (
+    AUTO_SCAN_ENABLED,
     LA_TZ,
     IMAGE_DIR,
     IMAGES_UPLOAD_DIR,
@@ -34,7 +35,7 @@ from services.telemetry import Timer, emit_socket_event, log_event
 scan_status = {
     "running":      False,
     "last_scan":    "Never",
-    "next_scan":    "Calculating...",
+    "next_scan":    "Calculating..." if AUTO_SCAN_ENABLED else "—",
     "current_step": "",
 }
 
@@ -195,6 +196,10 @@ def _scan_scheduler_loop() -> None:
 def start_scan_scheduler() -> None:
     """Start the hourly automated scan scheduler daemon thread once."""
     global _scheduler_started
+    if not AUTO_SCAN_ENABLED:
+        scan_status["next_scan"] = "—"
+        print("[SCAN] Automatic hourly scan scheduler disabled (AUTO_SCAN_ENABLED=False).")
+        return
     if _scheduler_started:
         return
     _scheduler_started = True
