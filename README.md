@@ -6,6 +6,10 @@ Lab drive: https://drive.google.com/drive/folders/1pTi2H-WdkrL60x7fensSTAS5a-E9s
 
 ## 🚀 Quick Start Guide
 
+This branch adds an optional, independent Google Drive backup of local captures.
+The original AWS uploader and image browser remain unchanged.
+See [GOOGLE_DRIVE_BACKUP.md](GOOGLE_DRIVE_BACKUP.md) for setup and verification.
+
 ### 0. Connect to Tailscale
 Go to https://tailscale.com/download, and follow the instructions for your respective OS. When prompted to sign in, use the `khojahlab@gmail.com` credentials. Do not use your own credentials on Tailscale. Once you are connected, you should see your device on the admin console.
 

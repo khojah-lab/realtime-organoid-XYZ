@@ -57,6 +57,8 @@ def take_scan_photo(chamber_name: str) -> str | None:
 
     os.makedirs(IMAGE_DIR, exist_ok=True)
     local_path = os.path.join(IMAGE_DIR, f"{chamber_name}_{timestamp}.jpg")
+    # The independent Drive worker must only see complete JPEGs.
+    temporary_path = os.path.join(IMAGE_DIR, f".{chamber_name}_{timestamp}.part.jpg")
 
     upload_dir = os.path.join(
         IMAGES_UPLOAD_DIR,
@@ -77,12 +79,13 @@ def take_scan_photo(chamber_name: str) -> str | None:
 
         with Timer(f"CAPTURE_{chamber_name}"):
             success = cv2.imwrite(
-                local_path,
+                temporary_path,
                 frame,
                 [cv2.IMWRITE_JPEG_QUALITY, CAPTURE_JPEG_QUALITY],
             )
 
-        if success and os.path.exists(local_path):
+        if success and os.path.exists(temporary_path):
+            os.replace(temporary_path, local_path)
             print(f"  [SCAN] ✓ {local_path} ({os.path.getsize(local_path)} bytes)")
             shutil.copy2(local_path, upload_path)
             return local_path

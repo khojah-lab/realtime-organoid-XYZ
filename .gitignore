@@ -28,6 +28,10 @@ images_upload/
 *.token
 credentials.json
 secrets.yaml
+drive_token.json
+drive_token.tmp
+drive_client_secret.json
+drive_backup.sqlite3*
 
 # ========================
 # OS & Raspberry Pi Clutter

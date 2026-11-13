@@ -27,6 +27,7 @@ from hardware.gpio_control import cleanup_gpio, init_gpio
 from routes import register_routes
 from services.detection import start_detection_model_loader
 from services.scanner import start_scan_scheduler
+from services.drive_backup import start_drive_backup
 from services.telemetry import set_socketio
 
 
@@ -66,6 +67,7 @@ def create_app() -> tuple[Flask, SocketIO]:
     # Start background daemon services
     start_camera_capture_thread()
     start_scan_scheduler()
+    start_drive_backup()
     start_detection_model_loader()
 
     return app, socketio
