@@ -12,9 +12,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     with (BASE_DIR/'aws-upload.worker.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        while True:
-            try: upload_pending_images(str(IMAGES_UPLOAD_DIR))
-            except Exception: logging.exception('AWS worker will retry')
-            time.sleep(60)
+        from services.storage_worker import run
+        run('aws', lambda: upload_pending_images(str(IMAGES_UPLOAD_DIR)))
 
 if __name__=='__main__': main()

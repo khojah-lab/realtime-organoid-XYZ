@@ -33,14 +33,12 @@ def main():
                 except Exception: logging.exception('Drive upkeep failed; copies retained')
                 time.sleep(60)
         threading.Thread(target=upkeep,daemon=True).start()
-        last_prepare=0
-        while True:
-            try:
-                if time.monotonic()-last_prepare>=60:
-                    spool.activate(prepare); last_prepare=time.monotonic()
-                spool.recover()
-                if spool.upload_one(upload): continue
-            except Exception: logging.exception('Drive worker will retry')
-            time.sleep(2)
+        from services.storage_worker import run
+        def legacy():
+            spool.recover()
+            # Legacy queue drains without enrolling any historical originals.
+            for _ in range(20):
+                if not spool.upload_one(upload): break
+        run('drive', legacy)
 
 if __name__=='__main__': main()

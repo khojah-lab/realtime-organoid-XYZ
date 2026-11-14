@@ -87,3 +87,6 @@ dist/
 drive_spool/
 drive_upload_state.sqlite3*
 *.worker.lock
+storage_state.sqlite3*
+aws_spool/
+drive_spool_v2/

@@ -138,10 +138,14 @@ class DriveTests(unittest.TestCase):
             spec = importlib.util.spec_from_file_location("scanner_test", ROOT / "services/scanner.py")
             scanner = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(scanner)
-        with patch.object(scanner, "IMAGE_DIR", self.images), \
-             patch.object(scanner, "IMAGES_UPLOAD_DIR", self.root / "aws"), \
-             patch.object(scanner.shutil, "copy2", side_effect=OSError("AWS staging failed")):
-            scanner.take_scan_photo("top_left")
+        from services import storage_manager as manager
+        roots={'original':self.images,'aws':self.root/'aws','drive':self.root/'drive'}
+        with patch.object(manager,'DB',self.root/'storage.db'), patch.object(manager,'ROOTS',roots), \
+             patch.object(manager,'space',return_value={'critical':False}):
+            sid=manager.begin_scan()
+            scanner.take_scan_photo("top_left",sid)
+            def fail(path,row): raise OSError("AWS unavailable")
+            manager.process_one('aws',fail)
         captured = list(self.images.glob("top_left_*.jpg"))
         self.assertEqual(len(captured), 1)
         captured[0].rename(self.images / "top_left_20261113_120000.jpg")

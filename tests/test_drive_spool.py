@@ -105,31 +105,33 @@ class SpoolTests(unittest.TestCase):
         client=app.test_client()
         self.assertEqual(client.post('/drive-storage/control',json={'enabled':True}).status_code,403)
         token=client.get('/drive-storage/status').json['csrf'];headers={'X-Drive-CSRF':token}
-        self.assertEqual(client.post('/drive-storage/control',json={'enabled':True},headers=headers).status_code,200)
+        with patch.object(mod.storage_manager,'set_mode') as choose:
+            self.assertEqual(client.post('/drive-storage/control',json={'mode':'both'},headers=headers).status_code,200)
+            choose.assert_called_once_with('both')
         self.assertEqual(client.post('/drive-storage/control',json={'paused':'false'},headers=headers).status_code,400)
         headers['Origin']='https://other.example'
         self.assertEqual(client.post('/drive-storage/control',json={'enabled':False},headers=headers).status_code,403)
         with app.test_request_context('/'):
-            self.assertIn('Google Drive backup',render_template('main.html'))
+            self.assertIn('Image storage',render_template('main.html'))
 
-    def test_drive_copy_survives_aws_staging_failure(self):
-        import numpy as np
-        modules={
-          'hardware.camera':types.SimpleNamespace(capture_fresh_bgr_frame=lambda:np.zeros((8,8,3),dtype=np.uint8)),
-          'hardware.gpio_control':types.SimpleNamespace(set_led=lambda value:None),
-          'hardware.stepper_motors':types.SimpleNamespace(move_platform=lambda *a:None),
-          'services.telemetry':types.SimpleNamespace(Timer=lambda *a:contextlib.nullcontext(),emit_socket_event=lambda *a:None,log_event=lambda *a:None)}
-        with patch.dict(sys.modules,modules):
-            spec=importlib.util.spec_from_file_location('scanner_spool_test',ROOT/'services/scanner.py')
-            scanner=importlib.util.module_from_spec(spec);spec.loader.exec_module(scanner)
-        self.enabled();scan=s.begin_scan()
-        with patch.object(scanner,'IMAGE_DIR',self.root/'aws_originals'),patch.object(scanner,'IMAGES_UPLOAD_DIR',self.root/'aws_stage'),patch.object(scanner.shutil,'copy2',side_effect=OSError('AWS staging failed')):
-            scanner.take_scan_photo('top_left',scan)
-        self.assertEqual(s.status()['pending'],1)
-        self.assertEqual(len(list(s.SPOOL.rglob('*.jpg'))),1)
-        # Conversely, a Drive failure must not prevent AWS staging.
-        with patch.object(scanner,'IMAGE_DIR',self.root/'aws_originals2'),patch.object(scanner,'IMAGES_UPLOAD_DIR',self.root/'aws_stage2'),patch.object(s,'capture',side_effect=OSError('Drive disk failed')):
-            self.assertIsNotNone(scanner.take_scan_photo('top_left',scan))
-        self.assertEqual(len(list((self.root/'aws_stage2').rglob('*.jpg'))),1)
+    def test_drive_queue_survives_independent_aws_failure(self):
+        from services import storage_manager as manager
+        roots={k:self.root/k for k in ('original','aws','drive')}
+        with patch.object(manager,'DB',self.root/'new.db'),patch.object(manager,'ROOTS',roots),patch.object(manager,'space',return_value={'critical':False}):
+            with manager.connect() as db: db.execute("UPDATE settings SET mode='both'")
+            sid=manager.begin_scan()
+            manager.capture(sid,self.name,self.taken,b'jpeg')
+            original_publish=manager.publish
+            def fail_aws(path,data):
+                if path.parent==roots['aws']: raise OSError('AWS staging failed')
+                original_publish(path,data)
+            with patch.object(manager,'publish',side_effect=fail_aws):
+                manager.process_one('aws',lambda *a:'aws')
+                manager.process_one('drive',lambda *a:'drive')
+            with manager.connect() as db:
+                jobs={r['provider']:r['verified'] for r in db.execute('SELECT * FROM jobs')}
+            self.assertIsNone(jobs['aws'])
+            self.assertIsNotNone(jobs['drive'])
+            self.assertTrue((roots['original']/self.name).exists())
 
 if __name__=='__main__':unittest.main()
