@@ -1,0 +1,55 @@
+<section class="panel" style="padding:18px;margin:16px 0;font-family:sans-serif" aria-labelledby="drive-title">
+  <h2 id="drive-title">Google Drive backup</h2>
+  <p>A separate local copy for Drive. These controls do not change AWS.</p>
+  <button type="button" id="drive-enable">Enable for new scans</button>
+  <button type="button" id="drive-disable">Stop accepting new scans</button>
+  <button type="button" id="drive-pause">Pause uploads</button>
+  <button type="button" id="drive-resume">Resume uploads</button>
+  <p id="drive-message" role="status" aria-live="polite"></p>
+  <pre id="drive-state" style="white-space:pre-wrap;font-size:14px" aria-live="polite">Loading Drive status…</pre>
+  <p>Enabling checks the lab account and creates today's folders, without uploading older photos.
+     Backup begins with the next complete scan after validation. A scan already in progress keeps its original setting.</p>
+  <p>Stopping new scans lets existing uploads finish. Pause stops further uploads after any in-flight request finishes.
+     Verified Drive copies are deleted from the Pi after about 10–11 minutes. Failed copies are retained for retry.
+     AWS files and cloud photos are never deleted by this Drive cleanup.</p>
+</section>
+<script>
+(function(){
+  let token='',busy=false;
+  const message=document.getElementById('drive-message');
+  async function refresh(){
+    try {
+      const response=await fetch('/drive-storage/status',{cache:'no-store'});
+      if(!response.ok) throw new Error('Could not read Drive status');
+      const s=await response.json(); token=s.csrf;
+      const phase=s.enabled?'Enabled for scans starting now':s.requested?'Enabling: waiting for lab validation / worker':'Not accepting new scans';
+      const lines=[phase, 'Worker: '+(s.worker_alive?'running':'not reporting — deployment/service check needed'),
+        'Uploads: '+(s.paused?'paused':'processing existing queue'),
+        'Pending: '+s.pending+' | Verified: '+s.verified+' | Local copies cleaned: '+s.deleted,
+        'Drive local copies: '+(s.local_bytes/1048576).toFixed(1)+' MB | Disk free: '+s.free_gb+' GB'];
+      if(s.low_space) lines.push('LOW DISK SPACE — resolve pending uploads; unverified copies will not be deleted.');
+      if(s.error) lines.push(s.error);
+      s.errors.forEach(e=>lines.push(e.name+': '+e.error));
+      document.getElementById('drive-state').textContent=lines.join('\n');
+      document.getElementById('drive-enable').disabled=busy||!!s.requested;
+      document.getElementById('drive-disable').disabled=busy||!s.requested;
+      document.getElementById('drive-pause').disabled=busy||!!s.paused;
+      document.getElementById('drive-resume').disabled=busy||!s.paused;
+    }catch(e){document.getElementById('drive-state').textContent=e.message;}
+  }
+  async function set(body){
+    if(busy||!token)return; busy=true;
+    try{
+      const response=await fetch('/drive-storage/control',{method:'POST',headers:{'Content-Type':'application/json','X-Drive-CSRF':token},body:JSON.stringify(body)});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not save');
+      message.textContent='Saved. AWS and the current scan are unchanged.';
+    }catch(e){message.textContent=e.message;}
+    finally{busy=false;await refresh();}
+  }
+  document.getElementById('drive-enable').onclick=()=>set({enabled:true});
+  document.getElementById('drive-disable').onclick=()=>set({enabled:false});
+  document.getElementById('drive-pause').onclick=()=>set({paused:true});
+  document.getElementById('drive-resume').onclick=()=>set({paused:false});
+  refresh();setInterval(refresh,5000);
+})();
+</script>

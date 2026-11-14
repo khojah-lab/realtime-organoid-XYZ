@@ -8,6 +8,7 @@ real-time UI status updates.
 """
 
 import datetime
+import uuid
 import os
 import shutil
 import threading
@@ -27,7 +28,7 @@ from config import (
 from hardware.camera import capture_fresh_bgr_frame
 from hardware.gpio_control import set_led
 from hardware.stepper_motors import move_platform
-from services.cloud_storage import upload_pending_images
+from services import drive_spool
 from services.telemetry import Timer, emit_socket_event, log_event
 
 # ── Scan Status State (shared with UI) ────────────────────────
@@ -39,6 +40,7 @@ scan_status = {
 }
 
 _scheduler_started = False
+_scan_lock = threading.Lock()
 
 
 def get_scan_status() -> dict:
@@ -46,7 +48,7 @@ def get_scan_status() -> dict:
     return dict(scan_status)
 
 
-def take_scan_photo(chamber_name: str) -> str | None:
+def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
     """
     Capture a high-resolution photo for `chamber_name`, save it to `images/`,
     and copy it to the hourly `images_upload/MM/DD/HH/` staging directory.
@@ -55,7 +57,6 @@ def take_scan_photo(chamber_name: str) -> str | None:
     now = now_utc.astimezone(LA_TZ)
     timestamp = now.strftime("%Y%m%d_%H%M%S")
 
-    os.makedirs(IMAGE_DIR, exist_ok=True)
     local_path = os.path.join(IMAGE_DIR, f"{chamber_name}_{timestamp}.jpg")
     # The independent Drive worker must only see complete JPEGs.
     temporary_path = os.path.join(IMAGE_DIR, f".{chamber_name}_{timestamp}.part.jpg")
@@ -66,8 +67,9 @@ def take_scan_photo(chamber_name: str) -> str | None:
         str(now.day).zfill(2),
         str(now.hour).zfill(2),
     )
-    os.makedirs(upload_dir, exist_ok=True)
     upload_path = os.path.join(upload_dir, f"{chamber_name}_{timestamp}.jpg")
+
+    staging_temp = upload_path + ".part-" + uuid.uuid4().hex
 
     print(f"  [SCAN] Capturing {chamber_name}...")
 
@@ -77,6 +79,23 @@ def take_scan_photo(chamber_name: str) -> str | None:
             print("  [SCAN] ✗ Camera frame unavailable")
             return None
 
+        # Drive receives its own JPEG before AWS's local copy/staging operations.
+        # Failure of either path must not prevent the other path from saving.
+        if drive_session is not None:
+            try:
+                ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, CAPTURE_JPEG_QUALITY])
+                if not ok:
+                    raise RuntimeError("Could not encode Drive photo")
+                drive_spool.capture(drive_session, f"{chamber_name}_{timestamp}.jpg", chamber_name, now, encoded.tobytes())
+            except Exception as exc:
+                print(f"[DRIVE] Local copy failed: {exc}")
+                try:
+                    drive_spool.note_capture_error(exc)
+                except Exception:
+                    pass
+
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        os.makedirs(upload_dir, exist_ok=True)
         with Timer(f"CAPTURE_{chamber_name}"):
             success = cv2.imwrite(
                 temporary_path,
@@ -87,17 +106,38 @@ def take_scan_photo(chamber_name: str) -> str | None:
         if success and os.path.exists(temporary_path):
             os.replace(temporary_path, local_path)
             print(f"  [SCAN] ✓ {local_path} ({os.path.getsize(local_path)} bytes)")
-            shutil.copy2(local_path, upload_path)
+            # AWS worker may run during capture: publish only a complete staging copy.
+            shutil.copy2(local_path, staging_temp)
+            os.replace(staging_temp, upload_path)
             return local_path
         else:
             print("  [SCAN] ✗ Failed to save image")
     except Exception as e:
         print(f"  [SCAN] ✗ Capture error: {e}")
 
+    finally:
+        if os.path.exists(staging_temp):
+            os.unlink(staging_temp)
+
     return None
 
 
 def run_scan() -> None:
+    # Serialize manual/timed starts and snapshot Drive ON/OFF once per full scan.
+    if not _scan_lock.acquire(blocking=False):
+        return
+    try:
+        try:
+            drive_session = drive_spool.begin_scan()
+        except Exception as exc:
+            print(f"[DRIVE] Cannot register this scan; AWS capture continues: {exc}")
+            drive_session = None
+        _run_scan(drive_session)
+    finally:
+        _scan_lock.release()
+
+
+def _run_scan(drive_session) -> None:
     """Execute a full 6-chamber automated scan while keeping the camera stream active."""
     if scan_status["running"]:
         print("[SCAN] Already running, skipping.")
@@ -134,7 +174,7 @@ def run_scan() -> None:
                 scan_status["current_step"] = f"Capturing {chamber} ({i+1}/{total})..."
                 emit_socket_event("scan_status", scan_status)
                 print(f"\n  Chamber {i+1}/{total}: {chamber}")
-                fname = take_scan_photo(chamber)
+                fname = take_scan_photo(chamber, drive_session)
 
                 if fname:
                     captured_files.append(fname)
@@ -173,11 +213,7 @@ def run_scan() -> None:
             emit_socket_event("scan_status", scan_status)
             print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
 
-            threading.Thread(
-                target=upload_pending_images,
-                args=(str(IMAGES_UPLOAD_DIR),),
-                daemon=True,
-            ).start()
+
 
 
 def _scan_scheduler_loop() -> None:

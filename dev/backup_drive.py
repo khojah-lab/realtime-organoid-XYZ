@@ -1,29 +1,23 @@
-"""Run one independent backup pass, without importing the web server or AWS."""
+"""Drive diagnostics only. Old bulk historical uploader is no longer a CLI action."""
 import argparse
-import logging
+import json
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from config import IMAGE_DIR, DRIVE_STATE_FILE
-from services.drive_backup import backup_once, validate_destination, cutoff_time
-
+from services.drive_backup import validate_destination
+from services.drive_spool import status
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--images", type=Path, default=IMAGE_DIR)
-    parser.add_argument("--state", type=Path, default=DRIVE_STATE_FILE)
-    parser.add_argument("--check", action="store_true", help="Check lab identity, destination and cutoff; upload nothing")
+    parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
     if args.check:
-        start = cutoff_time()
         validate_destination()
-        print("Lab account and destination verified. Fixed start (UTC):", start.isoformat())
-        return 0
-    stats = backup_once(args.images, args.state)
-    print(stats)
-    return 1 if stats["failed"] else 0
+        print('Lab account and destination verified. No photos uploaded or folders created.')
+    else:
+        print(json.dumps(status(), indent=2))
+        print('Use the website to enable new scan backups. Run dev/drive_upload_worker.py via systemd.')
+    return 0
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(main())

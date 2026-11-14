@@ -82,3 +82,8 @@ dist/
 # ========================
 .vscode/
 .idea/
+
+# Independent uploader runtime data
+drive_spool/
+drive_upload_state.sqlite3*
+*.worker.lock
