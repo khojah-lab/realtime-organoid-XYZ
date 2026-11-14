@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import DRIVE_TOKEN_FILE
-from services.drive_backup import SCOPES, well_folders
+from services.drive_backup import SCOPES, validate_destination
 
 
 def main():
@@ -22,8 +22,9 @@ def main():
     with os.fdopen(descriptor, "w") as stream:
         stream.write(credentials.to_json())
     os.replace(temporary, target)
-    print("Authorized. Verified well folders:", well_folders())
-    print("Next: set XYZ_DRIVE_BACKUP_ENABLED=true before starting the server.")
+    validate_destination()
+    print("Authorized lab account and destination verified. No folders or images created.")
+    print("Set a fixed XYZ_DRIVE_START_AT before enabling backup.")
 
 
 if __name__ == "__main__":

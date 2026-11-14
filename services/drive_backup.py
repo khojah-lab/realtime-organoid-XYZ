@@ -11,7 +11,12 @@ import threading
 from config import (
     CHAMBER_NAMES, IMAGE_DIR, DRIVE_BACKUP_ENABLED, DRIVE_FOLDER_ID,
     DRIVE_TOKEN_FILE, DRIVE_STATE_FILE, DRIVE_BACKUP_INTERVAL,
+    LA_TZ,
 )
+
+# Kept here so deployment does not replace the Pi's hardware config.py.
+DRIVE_EXPECTED_EMAIL = os.getenv("XYZ_DRIVE_EXPECTED_EMAIL", "khojahlab@gmail.com")
+DRIVE_START_AT = os.getenv("XYZ_DRIVE_START_AT", "")
 
 log = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -60,7 +65,7 @@ def list_files(query):
     while True:
         page = get_client().files().list(
             q="trashed = false and (" + query + ")",
-            fields="nextPageToken,files(id,name,md5Checksum,size)",
+            fields="nextPageToken,files(id,name,md5Checksum,size,owners(emailAddress))",
             pageSize=1000, pageToken=page_token,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
         ).execute(num_retries=3)
@@ -70,19 +75,80 @@ def list_files(query):
             break
 
 
-def well_folders():
-    if not DRIVE_FOLDER_ID:
+def validate_destination():
+    """Fail closed if the OAuth account or root is not the lab's My Drive."""
+    if not DRIVE_FOLDER_ID or not DRIVE_EXPECTED_EMAIL:
+        raise RuntimeError("Drive target and expected lab email are required.")
+    api = get_client()
+    user = api.about().get(fields="user(emailAddress)").execute(num_retries=3)
+    if user.get("user", {}).get("emailAddress", "").lower() != DRIVE_EXPECTED_EMAIL.lower():
+        raise RuntimeError("Drive OAuth account does not match the expected lab account.")
+    root = api.files().get(
+        fileId=DRIVE_FOLDER_ID,
+        fields="id,mimeType,trashed,owners(emailAddress),capabilities(canAddChildren)",
+        supportsAllDrives=True,
+    ).execute(num_retries=3)
+    if (root.get("mimeType") != FOLDER_MIME or root.get("trashed")
+            or not root.get("capabilities", {}).get("canAddChildren")):
+        raise RuntimeError("Drive destination is not an available writable folder.")
+    require_lab_owner(root)
+
+
+def require_lab_owner(item):
+    if DRIVE_EXPECTED_EMAIL.lower() not in {
+        owner.get("emailAddress", "").lower() for owner in item.get("owners", [])
+    }:
+        raise RuntimeError("Drive folder is not owned by the expected lab account.")
+
+
+def cutoff_time():
+    try:
+        value = datetime.datetime.fromisoformat(DRIVE_START_AT)
+        if value.utcoffset() is None:
+            raise ValueError("missing offset")
+        return value.astimezone(datetime.timezone.utc)
+    except ValueError as exc:
+        raise RuntimeError("Set a fixed XYZ_DRIVE_START_AT with timezone offset before uploading.") from exc
+
+
+def capture_time(name):
+    match = NAME.fullmatch(name)
+    taken = datetime.datetime.strptime(match["stamp"], "%Y%m%d_%H%M%S")
+    # Reject ambiguous/nonexistent DST wall times rather than guessing a date.
+    return LA_TZ.localize(taken, is_dst=None)
+
+
+def day_folders(day):
+    matches = list(list_files(
+        f"'{quote(DRIVE_FOLDER_ID)}' in parents and mimeType = '{FOLDER_MIME}' and name = '{quote(day)}'"
+    ))
+    if len(matches) > 1:
+        raise RuntimeError("Duplicate Drive date folder: " + day)
+    if matches:
+        require_lab_owner(matches[0])
+        parent = matches[0]["id"]
+    else:
+        parent = get_client().files().create(
+            body={"name": day, "parents": [DRIVE_FOLDER_ID], "mimeType": FOLDER_MIME},
+            fields="id", supportsAllDrives=True,
+        ).execute()["id"]
+    return well_folders(parent)
+
+
+def well_folders(parent):
+    if not parent:
         raise RuntimeError("XYZ_DRIVE_FOLDER_ID is empty.")
     folders = {}
-    for item in list_files(f"'{quote(DRIVE_FOLDER_ID)}' in parents and mimeType = '{FOLDER_MIME}'"):
+    for item in list_files(f"'{quote(parent)}' in parents and mimeType = '{FOLDER_MIME}'"):
         if item["name"] in CHAMBER_NAMES:
+            require_lab_owner(item)
             if item["name"] in folders:
                 raise RuntimeError("Duplicate Drive well folder: " + item["name"])
             folders[item["name"]] = item["id"]
     for well in CHAMBER_NAMES:
         if well not in folders:
             item = get_client().files().create(
-                body={"name": well, "parents": [DRIVE_FOLDER_ID], "mimeType": FOLDER_MIME},
+                body={"name": well, "parents": [parent], "mimeType": FOLDER_MIME},
                 fields="id", supportsAllDrives=True,
             ).execute()
             folders[well] = item["id"]
@@ -123,11 +189,13 @@ def upload_one(path, folder, digest):
 
 def backup_once(image_dir=IMAGE_DIR, state_file=DRIVE_STATE_FILE):
     """Scan local originals, record verified uploads, never delete local/AWS files."""
-    stats = {"uploaded": 0, "skipped": 0, "failed": 0}
+    stats = {"uploaded": 0, "skipped": 0, "historical": 0, "failed": 0}
     if not _run_lock.acquire(blocking=False):
         return stats
     connection = None
     try:
+        start = cutoff_time()
+        validate_destination()
         state_file = Path(state_file)
         state_file.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(str(state_file), timeout=30)
@@ -135,31 +203,43 @@ def backup_once(image_dir=IMAGE_DIR, state_file=DRIVE_STATE_FILE):
             "CREATE TABLE IF NOT EXISTS uploaded (target TEXT, path TEXT, size INTEGER, "
             "mtime_ns INTEGER, md5 TEXT, file_id TEXT, PRIMARY KEY(target,path))"
         )
-        folders = None
+        connection.execute("CREATE TABLE IF NOT EXISTS policy (target TEXT PRIMARY KEY, start_at TEXT)")
+        saved = connection.execute("SELECT start_at FROM policy WHERE target=?", (DRIVE_FOLDER_ID,)).fetchone()
+        if saved and saved[0] != start.isoformat():
+            raise RuntimeError("Drive start time differs from the saved policy; restore the original start time.")
+        connection.execute("INSERT OR IGNORE INTO policy VALUES (?,?)", (DRIVE_FOLDER_ID, start.isoformat()))
+        connection.commit()
+        folders = {}
+        receipt_target = DRIVE_FOLDER_ID + "|daily-v1"
         for path in sorted(Path(image_dir).rglob("*.jpg")):
             well = parse_name(path.name)
             if not well or path.is_symlink():
                 continue
             try:
+                taken = capture_time(path.name)
+                if taken < start:
+                    stats["historical"] += 1
+                    continue
+                day = taken.strftime("%Y-%m-%d")
                 before = path.stat()
                 identity = str(path.resolve())
                 row = connection.execute(
                     "SELECT size,mtime_ns FROM uploaded WHERE target=? AND path=?",
-                    (DRIVE_FOLDER_ID, identity),
+                    (receipt_target, identity),
                 ).fetchone()
                 if row == (before.st_size, before.st_mtime_ns):
                     stats["skipped"] += 1
                     continue
                 digest = checksum(path)
-                if folders is None:
-                    folders = well_folders()
-                file_id = upload_one(path, folders[well], digest)
+                if day not in folders:
+                    folders[day] = day_folders(day)
+                file_id = upload_one(path, folders[day][well], digest)
                 after = path.stat()
                 if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
                     raise RuntimeError("Local capture changed during upload; will retry.")
                 connection.execute(
                     "INSERT OR REPLACE INTO uploaded VALUES (?,?,?,?,?,?)",
-                    (DRIVE_FOLDER_ID, identity, before.st_size, before.st_mtime_ns, digest, file_id),
+                    (receipt_target, identity, before.st_size, before.st_mtime_ns, digest, file_id),
                 )
                 connection.commit()
                 stats["uploaded"] += 1
@@ -168,7 +248,7 @@ def backup_once(image_dir=IMAGE_DIR, state_file=DRIVE_STATE_FILE):
                 stats["failed"] += 1
                 log.exception("Drive backup pending: %s", path.name)
                 # An authorization/folder outage affects every file; retry next cycle.
-                if folders is None:
+                if not folders:
                     break
     finally:
         if connection is not None:

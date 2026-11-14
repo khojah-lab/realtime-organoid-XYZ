@@ -97,7 +97,7 @@ S3_REGION = os.getenv("XYZ_S3_REGION", "us-east-2")
 
 # Independent Google Drive backup (AWS configuration above is unchanged).
 DRIVE_BACKUP_ENABLED = os.getenv("XYZ_DRIVE_BACKUP_ENABLED", "false").lower() in ("1", "true", "yes")
-DRIVE_FOLDER_ID = os.getenv("XYZ_DRIVE_FOLDER_ID", "1ttE0_okxThWxGyPuAqLBbRuuzV2Gzxa5")
+DRIVE_FOLDER_ID = os.getenv("XYZ_DRIVE_FOLDER_ID", "1ZIO_pjMMXZ1M5lLLFCAXVSh92ZX_CRiK")
 DRIVE_TOKEN_FILE = Path(os.getenv("XYZ_DRIVE_TOKEN_FILE", str(BASE_DIR / "drive_token.json")))
 DRIVE_STATE_FILE = Path(os.getenv("XYZ_DRIVE_STATE_FILE", str(BASE_DIR / "drive_backup.sqlite3")))
 DRIVE_BACKUP_INTERVAL = max(10, int(os.getenv("XYZ_DRIVE_BACKUP_INTERVAL", "60")))
