@@ -8,8 +8,6 @@ real-time UI status updates.
 """
 
 import datetime
-import os
-import shutil
 import threading
 import time
 import cv2
@@ -17,8 +15,6 @@ import pytz
 
 from config import (
     LA_TZ,
-    IMAGE_DIR,
-    IMAGES_UPLOAD_DIR,
     CAPTURE_JPEG_QUALITY,
     CHAMBER_NAMES,
     CHAMBER_MOVEMENTS,
@@ -27,7 +23,7 @@ from config import (
 from hardware.camera import capture_fresh_bgr_frame
 from hardware.gpio_control import set_led
 from hardware.stepper_motors import move_platform
-from services.cloud_storage import upload_pending_images
+from services import storage_manager
 from services.telemetry import Timer, emit_socket_event, log_event
 
 # ── Scan Status State (shared with UI) ────────────────────────
@@ -39,6 +35,7 @@ scan_status = {
 }
 
 _scheduler_started = False
+_scan_lock = threading.Lock()
 
 
 def get_scan_status() -> dict:
@@ -46,55 +43,42 @@ def get_scan_status() -> dict:
     return dict(scan_status)
 
 
-def take_scan_photo(chamber_name: str) -> str | None:
-    """
-    Capture a high-resolution photo for `chamber_name`, save it to `images/`,
-    and copy it to the hourly `images_upload/MM/DD/HH/` staging directory.
-    """
-    now_utc = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
-    now = now_utc.astimezone(LA_TZ)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-
-    os.makedirs(IMAGE_DIR, exist_ok=True)
-    local_path = os.path.join(IMAGE_DIR, f"{chamber_name}_{timestamp}.jpg")
-
-    upload_dir = os.path.join(
-        IMAGES_UPLOAD_DIR,
-        str(now.month).zfill(2),
-        str(now.day).zfill(2),
-        str(now.hour).zfill(2),
-    )
-    os.makedirs(upload_dir, exist_ok=True)
-    upload_path = os.path.join(upload_dir, f"{chamber_name}_{timestamp}.jpg")
-
-    print(f"  [SCAN] Capturing {chamber_name}...")
-
+def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
+    now = datetime.datetime.now(LA_TZ)
+    name = f"{chamber_name}_{now.strftime('%Y%m%d_%H%M%S')}.jpg"
     try:
         frame = capture_fresh_bgr_frame()
         if frame is None:
-            print("  [SCAN] ✗ Camera frame unavailable")
-            return None
-
-        with Timer(f"CAPTURE_{chamber_name}"):
-            success = cv2.imwrite(
-                local_path,
-                frame,
-                [cv2.IMWRITE_JPEG_QUALITY, CAPTURE_JPEG_QUALITY],
-            )
-
-        if success and os.path.exists(local_path):
-            print(f"  [SCAN] ✓ {local_path} ({os.path.getsize(local_path)} bytes)")
-            shutil.copy2(local_path, upload_path)
-            return local_path
-        else:
-            print("  [SCAN] ✗ Failed to save image")
-    except Exception as e:
-        print(f"  [SCAN] ✗ Capture error: {e}")
-
-    return None
+            raise RuntimeError("Camera frame unavailable")
+        ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, CAPTURE_JPEG_QUALITY])
+        if not ok:
+            raise RuntimeError("JPEG encoding failed")
+        return storage_manager.capture(drive_session, name, now, encoded.tobytes())
+    except Exception as exc:
+        print(f"[SCAN] Capture failed: {exc}")
+        return None
 
 
 def run_scan() -> None:
+    if not _scan_lock.acquire(blocking=False):
+        return
+    sid = None
+    try:
+        sid = storage_manager.begin_scan()
+        _run_scan(sid)
+    except Exception as exc:
+        scan_status["current_step"] = str(exc)
+        emit_socket_event("scan_status", scan_status)
+        print(f"[SCAN] {exc}")
+    finally:
+        try:
+            if sid:
+                storage_manager.finish_scan(sid)
+        finally:
+            _scan_lock.release()
+
+
+def _run_scan(drive_session) -> None:
     """Execute a full 6-chamber automated scan while keeping the camera stream active."""
     if scan_status["running"]:
         print("[SCAN] Already running, skipping.")
@@ -131,7 +115,7 @@ def run_scan() -> None:
                 scan_status["current_step"] = f"Capturing {chamber} ({i+1}/{total})..."
                 emit_socket_event("scan_status", scan_status)
                 print(f"\n  Chamber {i+1}/{total}: {chamber}")
-                fname = take_scan_photo(chamber)
+                fname = take_scan_photo(chamber, drive_session)
 
                 if fname:
                     captured_files.append(fname)
@@ -170,11 +154,7 @@ def run_scan() -> None:
             emit_socket_event("scan_status", scan_status)
             print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
 
-            threading.Thread(
-                target=upload_pending_images,
-                args=(str(IMAGES_UPLOAD_DIR),),
-                daemon=True,
-            ).start()
+
 
 
 def _scan_scheduler_loop() -> None:
