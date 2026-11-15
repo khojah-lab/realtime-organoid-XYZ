@@ -1,0 +1,482 @@
+/* ── CAMERA FEED ── */
+#camera_feed {
+    width: 100%;
+    max-width: 800px;
+    height: auto;
+    aspect-ratio: 1/1;
+    background: black;
+    border: 2px solid #333;
+    display: block;
+}
+
+#stream_status {
+    color: red;
+    font-size: 0.85em;
+    margin-top: 4px;
+    min-height: 1.2em;
+}
+
+/* ── MOTION CONTROLS ── */
+.controls-row {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    margin-top: 12px;
+}
+
+.controls-label {
+    font-size: 0.75em;
+    color: #555;
+    text-align: center;
+    margin-top: 5px;
+    letter-spacing: 1px;
+    font-family: sans-serif;
+}
+
+/* XY pad */
+.arrow-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    gap: 5px;
+}
+
+.arrow-grid button {
+    width: 52px;
+    height: 52px;
+    font-size: 21px;
+    cursor: pointer;
+    border: 2px solid #333;
+    border-radius: 7px;
+    background: #f0f0f0;
+}
+
+.arrow-grid button:active {
+    background: #bbb;
+}
+
+.arrow-grid button,
+.z-controls button {
+    touch-action: none;
+    user-select: none;
+}
+
+.arrow-grid button:disabled,
+.z-controls button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#scan-lock-notice {
+    display: none;
+    margin-top: 8px;
+    padding: 6px 10px;
+    max-width: 520px;
+    background: #fff3cd;
+    border: 1px solid #e0a800;
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+
+#scan-lock-notice button {
+    margin-left: 8px;
+    cursor: pointer;
+}
+
+.arrow-grid .empty {
+    background: transparent;
+    border: none;
+    pointer-events: none;
+}
+
+/* Z pad */
+.z-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    margin-top: 14px;
+}
+
+.z-controls button {
+    width: 52px;
+    height: 52px;
+    font-size: 21px;
+    cursor: pointer;
+    border: 2px solid #555;
+    border-radius: 7px;
+    background: #e8e8ff;
+}
+
+.z-controls button:active {
+    background: #aab;
+}
+
+/* Stop */
+.stop-btn {
+    width: 52px;
+    height: 52px;
+    font-size: 17px;
+    cursor: pointer;
+    border: 2px solid #900;
+    border-radius: 7px;
+    background: #fee;
+    color: #900;
+    font-weight: bold;
+}
+
+.stop-btn:active {
+    background: #fcc;
+}
+
+/* ── LED BUTTON ── */
+.led-button {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 3px solid #555;
+    cursor: pointer;
+    font-size: 24px;
+    background: #333;
+    color: #666;
+    transition: all 0.3s;
+}
+
+.led-button.on {
+    background: #ffeb3b;
+    color: #f57f17;
+    border-color: #f9a825;
+    box-shadow: 0 0 20px #ffeb3b;
+}
+
+.led-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ── STAGE POSITION & STEP SIZE CARD ── */
+.stage-pos-card {
+    font-family: sans-serif;
+    font-size: 13px;
+    background: #f7f9ff;
+    border: 1px solid #ccd6eb;
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 280px;
+}
+
+.stage-pos-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.stage-pos-header b {
+    color: #1a237e;
+}
+
+#nav-uncertain-badge {
+    display: none;
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef5350;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.stage-pos-coords {
+    font-family: monospace;
+    font-size: 15px;
+    font-weight: bold;
+    color: #111;
+    margin-bottom: 6px;
+}
+
+.stage-pos-limits {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.nav-step-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.nav-step-label {
+    font-size: 12px;
+    color: #333;
+}
+
+.nav-step-btn {
+    padding: 2px 7px;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background: #fff;
+    color: #000;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.nav-step-btn.active-step {
+    border-color: #1565C0;
+    background: #1565C0;
+    color: #fff;
+}
+
+#btn-nav-zero {
+    margin-left: auto;
+    padding: 3px 9px;
+    border: none;
+    border-radius: 4px;
+    background: #2e7d32;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+#btn-nav-zero:hover {
+    background: #1b5e20;
+}
+
+/* ── SLIDERS (ZOOM / FOCUS) ── */
+.slidercontrols {
+    width: 85%;
+    margin-bottom: 6px;
+}
+
+.slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 10px;
+    background: #d3d3d3;
+    outline: none;
+    opacity: 0.7;
+    -webkit-transition: .2s;
+    transition: opacity .2s;
+}
+
+.slider:hover {
+    opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    background: #04AA6D;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    background: #04AA6D;
+    cursor: pointer;
+}
+
+.fine-controls {
+    display: inline-flex;
+    gap: 6px;
+    margin: 3px 0;
+}
+
+.fine-controls span {
+    font-size: large;
+    font-weight: bold;
+    width: 26px;
+    height: 26px;
+    background: transparent;
+    border-radius: 4px;
+    border: 2px solid #555;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.fine-controls span:hover {
+    background: #eee;
+}
+
+/* ── ACTION BUTTONS ── */
+.getbutton,
+.detectorganoid,
+.downloadbutton,
+.autofocusbutton,
+.scannowbutton {
+    border: none;
+    color: white;
+    padding: 6px 15px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+.getbutton,
+.detectorganoid,
+.downloadbutton,
+.autofocusbutton {
+    background-color: #4CAF50;
+}
+
+.scannowbutton {
+    background-color: #1565C0;
+}
+
+.scannowbutton.secondary-scan-btn {
+    background-color: #546e7a;
+}
+
+.getbutton:hover,
+.detectorganoid:hover,
+.downloadbutton:hover,
+.autofocusbutton:hover {
+    background-color: #388E3C;
+}
+
+.scannowbutton:hover {
+    background-color: #0D47A1;
+}
+
+.scannowbutton.secondary-scan-btn:hover {
+    background-color: #37474f;
+}
+
+/* ── DC MOTOR CONTROL ── */
+.dc-motor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+    max-width: 560px;
+}
+
+.dc-motor-card {
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: #f7f9ff;
+    font-family: sans-serif;
+    font-size: 13px;
+}
+
+.dc-motor-card .ch-title {
+    font-weight: bold;
+    color: #1a237e;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.dc-motor-card .ch-label {
+    color: #555;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+.dc-motor-card .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.dc-motor-card input[type=range] {
+    flex: 1;
+    height: 6px;
+    accent-color: #1565C0;
+}
+
+.dc-motor-card .speed-val {
+    width: 34px;
+    text-align: right;
+    font-weight: bold;
+    color: #1565C0;
+}
+
+.dc-motor-card .btn-row {
+    display: flex;
+    gap: 5px;
+}
+
+.dc-motor-card .btn-fwd,
+.dc-motor-card .btn-rev,
+.dc-motor-card .btn-stop-ch {
+    flex: 1;
+    padding: 5px 0;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+.dc-motor-card .btn-fwd     { background: #c8e6c9; color: #1b5e20; }
+.dc-motor-card .btn-rev     { background: #ffcdd2; color: #b71c1c; }
+.dc-motor-card .btn-stop-ch { background: #eeeeee; color: #333; }
+.dc-motor-card .btn-fwd:hover     { background: #a5d6a7; }
+.dc-motor-card .btn-rev:hover     { background: #ef9a9a; }
+.dc-motor-card .btn-stop-ch:hover { background: #bdbdbd; }
+
+.dc-motor-card .ch-status {
+    margin-top: 5px;
+    font-size: 11px;
+    height: 14px;
+    color: #777;
+}
+
+.dc-motor-card .ch-status.running { color: #2e7d32; font-weight: bold; }
+.dc-motor-card .ch-status.reverse { color: #c62828; font-weight: bold; }
+
+/* Duration + all-motors row */
+.dc-all-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+    max-width: 560px;
+}
+
+.dc-all-row label {
+    font-family: sans-serif;
+    font-size: 13px;
+}
+
+.dc-all-row input[type=number] {
+    width: 60px;
+    padding: 3px 5px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+}
+
+.dc-duration-note {
+    color: #888;
+    font-family: sans-serif;
+}
+
+.dc-btn-all {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: sans-serif;
+}
+
+.dc-btn-all-fwd  { background: #1565C0; color: #fff; }
+.dc-btn-all-rev  { background: #b71c1c; color: #fff; }
+.dc-btn-all-stop { background: #555;    color: #fff; }
+.dc-btn-all-fwd:hover  { background: #0d47a1; }
+.dc-btn-all-rev:hover  { background: #7f0000; }
+.dc-btn-all-stop:hover { background: #222; }

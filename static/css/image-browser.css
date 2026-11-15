@@ -1,0 +1,143 @@
+/* ── IMAGE BROWSER & DETECTION DISPLAY ── */
+.past-img,
+.detect-img {
+    width: 800px;
+    height: 800px;
+    background: #111;
+    display: block;
+    border: 2px solid #333;
+    margin-top: 10px;
+}
+
+#capture-browser {
+    flex: 1 1 calc(100% - 100px);
+    width: auto;
+    margin-right: 50px;
+}
+
+#capture-browser button,
+#capture-browser input {
+    font-size: 14px;
+}
+
+.cb-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.cb-muted {
+    color: #666;
+}
+
+.cb-error {
+    color: #b00020;
+}
+
+.cb-row button {
+    padding: 5px 12px;
+    cursor: pointer;
+    border: 1px solid #888;
+    border-radius: 5px;
+    background: #f0f0f0;
+}
+
+.cb-row button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.cb-time.active {
+    background: #4CAF50;
+    color: white;
+    border-color: #388E3C;
+}
+
+#cb-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+}
+
+.cb-card {
+    position: relative;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: #111;
+}
+
+.cb-card.viewing {
+    border-color: #4CAF50;
+}
+
+.cb-thumb {
+    width: 100%;
+    display: block;
+    cursor: pointer;
+    border-radius: 4px;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+}
+
+.cb-check {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.cb-label {
+    color: #ddd;
+    font-size: 11px;
+    padding: 3px 4px;
+    text-transform: capitalize;
+}
+
+#cb-viewer {
+    display: none;
+}
+
+#cb-viewer .past-img {
+    width: 100%;
+    max-width: 800px;
+    height: auto;
+    aspect-ratio: 1/1;
+    margin-top: 4px;
+}
+
+#cb-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.cb-section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 4px 14px 8px;
+    margin-bottom: 12px;
+}
+
+.cb-section-title {
+    font-weight: bold;
+    margin: 10px 0 0;
+}
+
+#cb-download-status {
+    min-height: 1.2em;
+}
+
+@media (max-width: 1100px) {
+    #cb-layout {
+        grid-template-columns: 1fr;
+    }
+    #cb-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}

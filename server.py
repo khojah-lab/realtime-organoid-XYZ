@@ -55,7 +55,7 @@ def create_app() -> tuple[Flask, SocketIO]:
     """Create and configure the Flask application, Socket.IO server, and background workers."""
     init_gpio()
 
-    app = Flask(__name__, template_folder="templates")
+    app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["SECRET_KEY"] = SECRET_KEY
 
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")

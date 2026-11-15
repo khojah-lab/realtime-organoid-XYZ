@@ -1,0 +1,309 @@
+/* ── SCAN & NAVIGATION BOXES ── */
+.scan-box {
+    border: 1px solid #bbb;
+    border-radius: 6px;
+    padding: 10px 14px;
+    background: #f0f4ff;
+    font-family: sans-serif;
+    font-size: 13px;
+    margin-top: 14px;
+    max-width: 560px;
+}
+
+.scan-box b {
+    color: #1a237e;
+}
+
+.scan-running {
+    background: #fff8e1 !important;
+    border-color: #f9a825 !important;
+}
+
+#scan_progress {
+    color: #1565C0;
+    font-style: italic;
+    font-size: 12px;
+    margin-top: 4px;
+    min-height: 1.2em;
+}
+
+#scan_countdown {
+    color: #1565C0;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* ── 6-WELL STAGE NAVIGATION & BOOKMARKS ── */
+#nav_box {
+    background: #f8faf8;
+    border-color: #a5d6a7;
+}
+
+.nav-box-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.nav-box-header b {
+    color: #1b5e20;
+}
+
+.nav-box-header small {
+    color: #555;
+}
+
+#nav-bookmark-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.bm-card {
+    border: 1px solid #c5e1a5;
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.bm-card.is-current {
+    border-color: #2e7d32;
+    background: #e8f5e9;
+}
+
+.bm-title {
+    font-weight: bold;
+    color: #1b5e20;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bm-coords {
+    font-family: monospace;
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 4px;
+}
+
+.bm-actions {
+    display: flex;
+    gap: 3px;
+}
+
+.bm-go-btn,
+.bm-sync-btn,
+.bm-set-btn {
+    flex: 1;
+    padding: 2px 0;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.bm-go-btn {
+    border: none;
+    background: #1565C0;
+    color: #fff;
+}
+
+.bm-go-btn:hover {
+    background: #0d47a1;
+}
+
+.bm-sync-btn {
+    border: 1px solid #ef6c00;
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.bm-sync-btn:hover {
+    background: #ffe0b2;
+}
+
+.bm-set-btn {
+    border: 1px solid #888;
+    background: #f5f5f5;
+    color: #333;
+}
+
+.bm-set-btn:hover {
+    background: #e0e0e0;
+}
+
+/* Direct Coordinate Goto */
+.nav-goto-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #ccc;
+}
+
+.nav-goto-label {
+    font-size: 12px;
+}
+
+.nav-coord-input {
+    width: 72px;
+    padding: 2px 5px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+}
+
+#btn-nav-goto-xy {
+    padding: 3px 10px;
+    border: none;
+    border-radius: 4px;
+    background: #1565C0;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#btn-nav-goto-xy:hover {
+    background: #0d47a1;
+}
+
+/* ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── */
+.scan-config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 8px 0;
+}
+
+.scan-config-row label {
+    margin: 0;
+    font-weight: normal;
+}
+
+#scan-well-select {
+    padding: 2px 5px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+}
+
+#scan-geom-r {
+    width: 62px;
+    padding: 2px 4px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+}
+
+#scan-geom-sx,
+#scan-geom-sy {
+    width: 54px;
+    padding: 2px 4px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+}
+
+.scan-actions-row {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#scan-verify-banner {
+    display: none;
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #e8f5e9;
+    border: 1px solid #4caf50;
+    border-radius: 6px;
+}
+
+#scan-verify-text {
+    font-weight: bold;
+    color: #1b5e20;
+    margin-bottom: 6px;
+}
+
+#btn-verify-yes,
+#btn-verify-no {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#btn-verify-yes {
+    background: #2e7d32;
+    margin-right: 6px;
+}
+
+#btn-verify-yes:hover {
+    background: #1b5e20;
+}
+
+#btn-verify-no {
+    background: #e65100;
+}
+
+#btn-verify-no:hover {
+    background: #bf360c;
+}
+
+/* ── LIVE ACTION LOG ── */
+.action-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 560px;
+    margin-top: 12px;
+}
+
+.action-log-header p {
+    font-size: x-large;
+    margin: 0;
+}
+
+#btn-clear-log {
+    padding: 2px 8px;
+    font-family: sans-serif;
+    font-size: 11px;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background: #eee;
+    cursor: pointer;
+}
+
+#btn-clear-log:hover {
+    background: #ddd;
+}
+
+#action-log {
+    height: 200px;
+    overflow-y: auto;
+    background: #111;
+    color: #00ff99;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #333;
+    margin-bottom: 12px;
+    max-width: 560px;
+}
+
+.log-row {
+    padding: 1px 0;
+    border-bottom: 1px solid #1e1e1e;
+    white-space: pre-wrap;
+}
+
+.log-ok    { color: #00ff99; }
+.log-error { color: #ff5252; }
+.log-warn  { color: #ffd54f; }
+.log-scan  { color: #4dd0e1; }

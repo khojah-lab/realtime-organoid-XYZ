@@ -4,292 +4,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cloud Based Microscopy</title>
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/controls.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/navigation-scan.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/image-browser.css') }}">
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
-<style>
-body { font-family: 'Times New Roman', Times, serif; background: #fafafa; }
-
-/* ── LAYOUT ── */
-.top-row    { display: flex; flex-wrap: wrap; padding: 20px 0; }
-.bottom-row { display: flex; flex-wrap: wrap; padding: 10px 0; }
-
-.imagecontainer {
-    padding-left: 50px;
-    padding-top: 30px;
-    width: 860px;
-    vertical-align: top;
-}
-.slidecontainer {
-    padding-left: 40px;
-    padding-top: 30px;
-    width: 680px;
-    vertical-align: top;
-}
-.pastimagecontainer, .organoiddetectioncontainer {
-    padding-left: 50px;
-    padding-top: 30px;
-    width: 860px;
-    vertical-align: top;
-}
-
-/* ── CAMERA FEED ── */
-#camera_feed {
-    width: 100%;
-    max-with: 800px;
-    height: auto;
-    aspect-ratio: 1/1;
-    background: black;
-    border: 2px solid #333;
-    display: block;
-}
-
-#stream_status {
-    color: red; font-size: 0.85em;
-    margin-top: 4px; min-height: 1.2em;
-}
-.past-img, .detect-img {
-    width: 800px; height: 800px;
-    background: #111;
-    display: block;
-    border: 2px solid #333;
-    margin-top: 10px;
-}
-
-/* ── MOTION CONTROLS ── */
-.controls-row {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-    margin-top: 12px;
-}
-.controls-label {
-    font-size: 0.75em; color: #555;
-    text-align: center; margin-top: 5px;
-    letter-spacing: 1px; font-family: sans-serif;
-}
-
-/* XY pad */
-.arrow-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 52px);
-    grid-template-rows: repeat(3, 52px);
-    gap: 5px;
-}
-.arrow-grid button {
-    width: 52px; height: 52px; font-size: 21px;
-    cursor: pointer; border: 2px solid #333;
-    border-radius: 7px; background: #f0f0f0;
-}
-.arrow-grid button:active { background: #bbb; }
-.arrow-grid button, .z-controls button { touch-action: none; user-select: none; }
-.arrow-grid button:disabled, .z-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
-#scan-lock-notice {
-    margin-top: 8px; padding: 6px 10px; max-width: 520px;
-    background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px;
-    font-size: 0.9em;
-}
-#scan-lock-notice button { margin-left: 8px; cursor: pointer; }
-.arrow-grid .empty { background: transparent; border: none; pointer-events: none; }
-
-/* Z pad */
-.z-controls {
-    display: flex; flex-direction: column;
-    align-items: center; gap: 5px; margin-top: 14px;
-}
-.z-controls button {
-    width: 52px; height: 52px; font-size: 21px;
-    cursor: pointer; border: 2px solid #555;
-    border-radius: 7px; background: #e8e8ff;
-}
-.z-controls button:active { background: #aab; }
-
-/* Stop */
-.stop-btn {
-    width: 52px; height: 52px; font-size: 17px;
-    cursor: pointer; border: 2px solid #900;
-    border-radius: 7px; background: #fee;
-    color: #900; font-weight: bold;
-}
-.stop-btn:active { background: #fcc; }
-
-/* ── SLIDERS ── */
-.slidercontrols { width: 85%; margin-bottom: 6px; }
-.slider {
-    -webkit-appearance: none; width: 100%; height: 10px;
-    background: #d3d3d3; outline: none; opacity: 0.7;
-    -webkit-transition: .2s; transition: opacity .2s;
-}
-.slider:hover { opacity: 1; }
-.slider::-webkit-slider-thumb {
-    -webkit-appearance: none; appearance: none;
-    width: 10px; height: 10px; background: #04AA6D; cursor: pointer;
-}
-.slider::-moz-range-thumb {
-    width: 10px; height: 10px; background: #04AA6D; cursor: pointer;
-}
-.fine-controls { display: inline-flex; gap: 6px; margin: 3px 0; }
-.fine-controls span {
-    font-size: large; font-weight: bold;
-    width: 26px; height: 26px;
-    background: transparent; border-radius: 4px;
-    border: 2px solid #555;
-    display: inline-flex; align-items: center;
-    justify-content: center; cursor: pointer; user-select: none;
-}
-.fine-controls span:hover { background: #eee; }
-
-/* ── BUTTONS ── */
-.getbutton, .detectorganoid, .downloadbutton,
-.autofocusbutton, .scannowbutton {
-    border: none; color: white;
-    padding: 6px 15px; font-size: 13px;
-    cursor: pointer; display: inline-block;
-    margin-right: 6px;
-}
-.getbutton, .detectorganoid, .downloadbutton,
-.autofocusbutton { background-color: #4CAF50; }
-.scannowbutton   { background-color: #1565C0; }
-.getbutton:hover, .detectorganoid:hover,
-.downloadbutton:hover, .autofocusbutton:hover { background-color: #388E3C; }
-.scannowbutton:hover { background-color: #0D47A1; }
-
-.led-button {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    border: 3px solid #555;
-    cursor: pointer;
-    font-size: 24px;
-    background: #333;
-    color: #666;
-    transition: all 0.3s;
-}
-.led-button.on {
-    background: #ffeb3b;
-    color: #f57f17;
-    border-color: #f9a825;
-    box-shadow: 0 0 20px #ffeb3b;
-}
-.led-controls {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-}
-
-/* ── SCAN STATUS BOX ── */
-.scan-box {
-    border: 1px solid #bbb; border-radius: 6px;
-    padding: 10px 14px; background: #f0f4ff;
-    font-family: sans-serif; font-size: 13px;
-    margin-top: 14px; max-width: 560px;
-}
-.scan-box b { color: #1a237e; }
-#scan_progress {
-    color: #1565C0; font-style: italic;
-    font-size: 12px; margin-top: 4px;
-    min-height: 1.2em;
-}
-.scan-running { background: #fff8e1 !important; border-color: #f9a825 !important; }
-
-#scan_countdown {
-color: #1565C0;
-font-weight: bold;
-font-size: 14px;
-}
-
-/* ── POSITION MODAL ── */
-#position-modal-overlay {
-    display: none;
-    position: fixed; top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.55);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-}
-#position-modal-overlay.active { display: flex; }
-#position-modal {
-    background: #fff;
-    border: 2px solid #1565C0;
-    border-radius: 10px;
-    padding: 28px 32px;
-    max-width: 420px;
-    width: 90%;
-    font-family: sans-serif;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
-    text-align: center;
-}
-#position-modal .modal-icon {
-    font-size: 2.5em; margin-bottom: 10px;
-}
-#position-modal h3 {
-    margin: 0 0 10px;
-    color: #1a237e;
-    font-size: 1.15em;
-}
-#position-modal p {
-    color: #444;
-    font-size: 0.95em;
-    margin-bottom: 20px;
-}
-.modal-btn-yes {
-    background: #1565C0; color: white;
-    border: none; border-radius: 6px;
-    padding: 9px 28px; font-size: 14px;
-    cursor: pointer; margin-right: 10px;
-}
-.modal-btn-yes:hover { background: #0D47A1; }
-.modal-btn-no {
-    background: #eee; color: #333;
-    border: 2px solid #bbb; border-radius: 6px;
-    padding: 9px 28px; font-size: 14px;
-    cursor: pointer;
-}
-.modal-btn-no:hover { background: #ddd; }
-/* ── PANELS: every page section gets its own border ── */
-.panel {
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 30px 0 0 50px;
-}
-.panel > p:first-child { margin-top: 0; }
-#capture-browser { flex: 1 1 calc(100% - 100px); width: auto; margin-right: 50px; }
-
-/* ── IMAGE BROWSER ── */
-#capture-browser button, #capture-browser input { font-size: 14px; }
-.cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
-.cb-muted { color: #666; }
-.cb-error { color: #b00020; }
-.cb-row button {
-    padding: 5px 12px; cursor: pointer; border: 1px solid #888;
-    border-radius: 5px; background: #f0f0f0;
-}
-.cb-row button:disabled { opacity: 0.45; cursor: not-allowed; }
-.cb-time.active { background: #4CAF50; color: white; border-color: #388E3C; }
-#cb-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.cb-card { position: relative; border: 2px solid transparent; border-radius: 6px; background: #111; }
-.cb-card.viewing { border-color: #4CAF50; }
-.cb-thumb { width: 100%; display: block; cursor: pointer; border-radius: 4px; aspect-ratio: 1/1; object-fit: cover; }
-.cb-check { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; cursor: pointer; }
-.cb-label { color: #ddd; font-size: 11px; padding: 3px 4px; text-transform: capitalize; }
-#cb-viewer .past-img { width: 100%; max-width: 800px; height: auto; aspect-ratio: 1/1; margin-top: 4px; }
-#cb-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.cb-section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 14px 8px; margin-bottom: 12px; }
-.cb-section-title { font-weight: bold; margin: 10px 0 0; }
-#cb-download-status { min-height: 1.2em; }
-@media (max-width: 1100px) {
-    #cb-layout { grid-template-columns: 1fr; }
-    #cb-grid { grid-template-columns: repeat(3, 1fr); }
-}
-
-</style>
 </head>
 <body>
-
 
 <!-- ═══════════════════════════════════
      POSITION CONFIRMATION MODAL
@@ -307,23 +30,14 @@ font-size: 14px;
     </div>
 </div>
 
-<div id="hardware-error-banner" style="
-    display: none;
-    background: #fdecea;
-    color: #b71c1c;
-    border-bottom: 2px solid #f44336;
-    padding: 12px 50px;
-    font-family: sans-serif;
-    font-size: 15px;
-    font-weight: bold;
-"></div>
+<div id="hardware-error-banner"></div>
 
-<div style="padding: 16px 50px 0;">
-    <p style="font-size: xx-large; margin: 0;"><b> University of California San Diego </b>| <b>Reem Khojah Research Lab</b> | Device: <b>XYZ Imaging System</b>
+<div class="page-header">
+    <p><b> University of California San Diego </b>| <b>Reem Khojah Research Lab</b> | Device: <b>XYZ Imaging System</b></p>
 </div>
 
-<div style="padding: 16px 50px 0;">
-    <p style="font-size: xx-large; margin: 0;">Organoid Microscopy System</p>
+<div class="page-header">
+    <p>Organoid Microscopy System</p>
 </div>
 
 <!-- ═══════════════════════════════════
@@ -333,13 +47,11 @@ font-size: 14px;
 
     <!-- LIVE FEED -->
     <div class="imagecontainer panel">
-        <p style="font-size: xx-large;">Organoids Live Feed</p>
-        <img id="camera_feed" src="/video"
-             onerror="document.getElementById('stream_status').textContent='⚠ Stream unavailable.'"
-             onload="document.getElementById('stream_status').textContent=''">
+        <p class="section-title">Organoids Live Feed</p>
+        <img id="camera_feed" src="/video">
         <div id="stream_status"></div>
 
-        <div id="scan-lock-notice" style="display:none;">
+        <div id="scan-lock-notice">
             <span id="scan-lock-text"></span>
             <button id="scan-unlock-btn" type="button">Unlock anyway</button>
         </div>
@@ -380,26 +92,26 @@ font-size: 14px;
             </div>
 
             <!-- Live Stage Coordinates & Step Size -->
-            <div style="font-family: sans-serif; font-size: 13px; background: #f7f9ff; border: 1px solid #ccd6eb; border-radius: 8px; padding: 10px 14px; min-width: 280px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <b style="color:#1a237e;">Stage Position (steps)</b>
-                    <span id="nav-uncertain-badge" style="display:none; background:#ffebee; color:#c62828; border:1px solid #ef5350; border-radius:4px; padding:1px 6px; font-size:11px; font-weight:bold;">⚠ UNCERTAIN</span>
+            <div class="stage-pos-card">
+                <div class="stage-pos-header">
+                    <b>Stage Position (steps)</b>
+                    <span id="nav-uncertain-badge">⚠ UNCERTAIN</span>
                 </div>
-                <div style="font-family: monospace; font-size: 15px; font-weight: bold; color: #111; margin-bottom: 6px;">
+                <div class="stage-pos-coords">
                     X: <span id="nav-pos-x">+0</span> &nbsp;|&nbsp;
                     Y: <span id="nav-pos-y">+0</span> &nbsp;|&nbsp;
                     Z: <span id="nav-pos-z">+0</span>
                 </div>
-                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                <div class="stage-pos-limits">
                     Limits: X [<span id="nav-lim-x">-1800, 9400</span>] · Y [<span id="nav-lim-y">-1200, 6500</span>]
                 </div>
-                <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
-                    <span style="font-size:12px; color:#333;">Tap Step:</span>
-                    <button type="button" class="nav-step-btn" data-steps="50" style="padding:2px 7px; border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">50</button>
-                    <button type="button" class="nav-step-btn active-step" data-steps="250" style="padding:2px 7px; border:1px solid #1565C0; border-radius:4px; background:#1565C0; color:#fff; cursor:pointer; font-size:12px;">250</button>
-                    <button type="button" class="nav-step-btn" data-steps="500" style="padding:2px 7px; border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">500</button>
-                    <button type="button" class="nav-step-btn" data-steps="1000" style="padding:2px 7px; border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">1000</button>
-                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark" style="margin-left:auto; padding:3px 9px; border:none; border-radius:4px; background:#2e7d32; color:#fff; cursor:pointer; font-size:12px; font-weight:bold;">Zero (0,0)</button>
+                <div class="nav-step-row">
+                    <span class="nav-step-label">Tap Step:</span>
+                    <button type="button" class="nav-step-btn" data-steps="50">50</button>
+                    <button type="button" class="nav-step-btn active-step" data-steps="250">250</button>
+                    <button type="button" class="nav-step-btn" data-steps="500">500</button>
+                    <button type="button" class="nav-step-btn" data-steps="1000">1000</button>
+                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark">Zero (0,0)</button>
                 </div>
             </div>
 
@@ -408,7 +120,7 @@ font-size: 14px;
 
     <!-- SYSTEM PARAMETERS -->
     <div class="slidecontainer panel">
-        <p style="font-size: xx-large;">System Parameters</p>
+        <p class="section-title">System Parameters</p>
 
         <!-- Zoom -->
         <div class="slidercontrols">
@@ -430,231 +142,130 @@ font-size: 14px;
             <input type="range" min="0" max="20000" value="0" step="50" class="slider" id="focus_slider">
         </div>
 
-	<!-- ── DC Motor Control ──────────────────────────────── -->
-	<p style="font-size: x-large; margin: 16px 0 4px;">DC Motor Control</p>
-	<small style="color:#666; font-family:sans-serif;">
-	  CH 3 drives Motors 3 &amp; 5 · CH 4 drives Motors 4 &amp; 6 (wired in parallel)
-	</small>
-	 
-	<style>
-	/* ── Motor card grid ── */
-	.dc-motor-grid {
-	  display: grid;
-	  grid-template-columns: repeat(2, 1fr);
-	  gap: 10px;
-	  margin-top: 10px;
-	  max-width: 560px;
-	}
-	.dc-motor-card {
-	  border: 1px solid #ccc;
-	  border-radius: 8px;
-	  padding: 10px 12px;
-	  background: #f7f9ff;
-	  font-family: sans-serif;
-	  font-size: 13px;
-	}
-	.dc-motor-card .ch-title {
-	  font-weight: bold;
-	  color: #1a237e;
-	  font-size: 14px;
-	  margin-bottom: 6px;
-	}
-	.dc-motor-card .ch-label {
-	  color: #555;
-	  font-size: 11px;
-	  margin-bottom: 6px;
-	}
-	.dc-motor-card .speed-row {
-	  display: flex;
-	  align-items: center;
-	  gap: 6px;
-	  margin-bottom: 6px;
-	}
-	.dc-motor-card input[type=range] {
-	  flex: 1;
-	  height: 6px;
-	  accent-color: #1565C0;
-	}
-	.dc-motor-card .speed-val {
-	  width: 34px;
-	  text-align: right;
-	  font-weight: bold;
-	  color: #1565C0;
-	}
-	.dc-motor-card .btn-row {
-	  display: flex;
-	  gap: 5px;
-	}
-	.dc-motor-card .btn-fwd,
-	.dc-motor-card .btn-rev,
-	.dc-motor-card .btn-stop-ch {
-	  flex: 1;
-	  padding: 5px 0;
-	  border: none;
-	  border-radius: 5px;
-	  cursor: pointer;
-	  font-size: 15px;
-	}
-	.dc-motor-card .btn-fwd    { background: #c8e6c9; color: #1b5e20; }
-	.dc-motor-card .btn-rev    { background: #ffcdd2; color: #b71c1c; }
-	.dc-motor-card .btn-stop-ch{ background: #eeeeee; color: #333; }
-	.dc-motor-card .btn-fwd:hover    { background: #a5d6a7; }
-	.dc-motor-card .btn-rev:hover    { background: #ef9a9a; }
-	.dc-motor-card .btn-stop-ch:hover{ background: #bdbdbd; }
-	.dc-motor-card .ch-status {
-	  margin-top: 5px;
-	  font-size: 11px;
-	  height: 14px;
-	  color: #777;
-	}
-	.dc-motor-card .ch-status.running { color: #2e7d32; font-weight: bold; }
-	.dc-motor-card .ch-status.reverse { color: #c62828; font-weight: bold; }
-	 
-	/* ── Duration + all-motors row ── */
-	.dc-all-row {
-	  display: flex;
-	  align-items: center;
-	  flex-wrap: wrap;
-	  gap: 8px;
-	  margin-top: 12px;
-	  max-width: 560px;
-	}
-	.dc-all-row label { font-family: sans-serif; font-size: 13px; }
-	.dc-all-row input[type=number] {
-	  width: 60px; padding: 3px 5px;
-	  border: 1px solid #bbb; border-radius: 4px;
-	}
-	.dc-btn-all {
-	  padding: 6px 12px; border: none; border-radius: 5px;
-	  cursor: pointer; font-size: 13px; font-family: sans-serif;
-	}
-	.dc-btn-all-fwd  { background: #1565C0; color: #fff; }
-	.dc-btn-all-rev  { background: #b71c1c; color: #fff; }
-	.dc-btn-all-stop { background: #555;    color: #fff; }
-	.dc-btn-all-fwd:hover  { background: #0d47a1; }
-	.dc-btn-all-rev:hover  { background: #7f0000; }
-	.dc-btn-all-stop:hover { background: #222; }
-	</style>
-	 
-	<!-- 4 channel cards -->
-	<div class="dc-motor-grid" id="dc-motor-grid">
-	 
-	  <!-- CH 1 -->
-	  <div class="dc-motor-card">
-	    <div class="ch-title">Channel 1</div>
-	    <div class="ch-label">Motor 1</div>
-	    <div class="speed-row">
-	      <span>Speed</span>
-	      <input type="range" min="0" max="1" step="0.05" value="0"
-		     class="dc-speed-slider" data-ch="1">
-	      <span class="speed-val" id="dc-sv-1">0.00</span>
-	    </div>
-	    <div class="btn-row">
-	      <button class="btn-fwd"     data-ch="1">▶ Fwd</button>
-	      <button class="btn-stop-ch" data-ch="1">■</button>
-	      <button class="btn-rev"     data-ch="1">◀ Rev</button>
-	    </div>
-	    <div class="ch-status" id="dc-st-1">● Stopped</div>
-	  </div>
-	 
-	  <!-- CH 2 -->
-	  <div class="dc-motor-card">
-	    <div class="ch-title">Channel 2</div>
-	    <div class="ch-label">Motor 2</div>
-	    <div class="speed-row">
-	      <span>Speed</span>
-	      <input type="range" min="0" max="1" step="0.05" value="0"
-		     class="dc-speed-slider" data-ch="2">
-	      <span class="speed-val" id="dc-sv-2">0.00</span>
-	    </div>
-	    <div class="btn-row">
-	      <button class="btn-fwd"     data-ch="2">▶ Fwd</button>
-	      <button class="btn-stop-ch" data-ch="2">■</button>
-	      <button class="btn-rev"     data-ch="2">◀ Rev</button>
-	    </div>
-	    <div class="ch-status" id="dc-st-2">● Stopped</div>
-	  </div>
-	 
-	  <!-- CH 3 -->
-	  <div class="dc-motor-card">
-	    <div class="ch-title">Channel 3</div>
-	    <div class="ch-label">Motors 3 + 5 (parallel)</div>
-	    <div class="speed-row">
-	      <span>Speed</span>
-	      <input type="range" min="0" max="1" step="0.05" value="0"
-		     class="dc-speed-slider" data-ch="3">
-	      <span class="speed-val" id="dc-sv-3">0.00</span>
-	    </div>
-	    <div class="btn-row">
-	      <button class="btn-fwd"     data-ch="3">▶ Fwd</button>
-	      <button class="btn-stop-ch" data-ch="3">■</button>
-	      <button class="btn-rev"     data-ch="3">◀ Rev</button>
-	    </div>
-	    <div class="ch-status" id="dc-st-3">● Stopped</div>
-	  </div>
-	 
-	  <!-- CH 4 -->
-	  <div class="dc-motor-card">
-	    <div class="ch-title">Channel 4</div>
-	    <div class="ch-label">Motors 4 + 6 (parallel)</div>
-	    <div class="speed-row">
-	      <span>Speed</span>
-	      <input type="range" min="0" max="1" step="0.05" value="0"
-		     class="dc-speed-slider" data-ch="4">
-	      <span class="speed-val" id="dc-sv-4">0.00</span>
-	    </div>
-	    <div class="btn-row">
-	      <button class="btn-fwd"     data-ch="4">▶ Fwd</button>
-	      <button class="btn-stop-ch" data-ch="4">■</button>
-	      <button class="btn-rev"     data-ch="4">◀ Rev</button>
-	    </div>
-	    <div class="ch-status" id="dc-st-4">● Stopped</div>
-	  </div>
-	 
-	</div>
-	 
-	<!-- Duration + run-all row -->
-	<div class="dc-all-row">
-	  <label>Duration (s):
-	    <input type="number" id="dc-duration" value="0" min="0" step="1">
-	  </label>
-	  <small style="color:#888; font-family:sans-serif;">(0 = continuous)</small>
-	  <button class="dc-btn-all dc-btn-all-fwd"  id="dc-all-fwd">▶▶ All Fwd</button>
-	  <button class="dc-btn-all dc-btn-all-rev"  id="dc-all-rev">◀◀ All Rev</button>
-	  <button class="dc-btn-all dc-btn-all-stop" id="dc-all-stop">■ Stop All</button>
-	</div>
-        
+        <!-- ── DC Motor Control ──────────────────────────────── -->
+        <p class="subsection-title">DC Motor Control</p>
+        <small class="text-muted-note">
+          CH 3 drives Motors 3 &amp; 5 · CH 4 drives Motors 4 &amp; 6 (wired in parallel)
+        </small>
+
+        <!-- 4 channel cards -->
+        <div class="dc-motor-grid" id="dc-motor-grid">
+
+          <!-- CH 1 -->
+          <div class="dc-motor-card">
+            <div class="ch-title">Channel 1</div>
+            <div class="ch-label">Motor 1</div>
+            <div class="speed-row">
+              <span>Speed</span>
+              <input type="range" min="0" max="1" step="0.05" value="0"
+                     class="dc-speed-slider" data-ch="1">
+              <span class="speed-val" id="dc-sv-1">0.00</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn-fwd"     data-ch="1">▶ Fwd</button>
+              <button class="btn-stop-ch" data-ch="1">■</button>
+              <button class="btn-rev"     data-ch="1">◀ Rev</button>
+            </div>
+            <div class="ch-status" id="dc-st-1">● Stopped</div>
+          </div>
+
+          <!-- CH 2 -->
+          <div class="dc-motor-card">
+            <div class="ch-title">Channel 2</div>
+            <div class="ch-label">Motor 2</div>
+            <div class="speed-row">
+              <span>Speed</span>
+              <input type="range" min="0" max="1" step="0.05" value="0"
+                     class="dc-speed-slider" data-ch="2">
+              <span class="speed-val" id="dc-sv-2">0.00</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn-fwd"     data-ch="2">▶ Fwd</button>
+              <button class="btn-stop-ch" data-ch="2">■</button>
+              <button class="btn-rev"     data-ch="2">◀ Rev</button>
+            </div>
+            <div class="ch-status" id="dc-st-2">● Stopped</div>
+          </div>
+
+          <!-- CH 3 -->
+          <div class="dc-motor-card">
+            <div class="ch-title">Channel 3</div>
+            <div class="ch-label">Motors 3 + 5 (parallel)</div>
+            <div class="speed-row">
+              <span>Speed</span>
+              <input type="range" min="0" max="1" step="0.05" value="0"
+                     class="dc-speed-slider" data-ch="3">
+              <span class="speed-val" id="dc-sv-3">0.00</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn-fwd"     data-ch="3">▶ Fwd</button>
+              <button class="btn-stop-ch" data-ch="3">■</button>
+              <button class="btn-rev"     data-ch="3">◀ Rev</button>
+            </div>
+            <div class="ch-status" id="dc-st-3">● Stopped</div>
+          </div>
+
+          <!-- CH 4 -->
+          <div class="dc-motor-card">
+            <div class="ch-title">Channel 4</div>
+            <div class="ch-label">Motors 4 + 6 (parallel)</div>
+            <div class="speed-row">
+              <span>Speed</span>
+              <input type="range" min="0" max="1" step="0.05" value="0"
+                     class="dc-speed-slider" data-ch="4">
+              <span class="speed-val" id="dc-sv-4">0.00</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn-fwd"     data-ch="4">▶ Fwd</button>
+              <button class="btn-stop-ch" data-ch="4">■</button>
+              <button class="btn-rev"     data-ch="4">◀ Rev</button>
+            </div>
+            <div class="ch-status" id="dc-st-4">● Stopped</div>
+          </div>
+
+        </div>
+
+        <!-- Duration + run-all row -->
+        <div class="dc-all-row">
+          <label>Duration (s):
+            <input type="number" id="dc-duration" value="0" min="0" step="1">
+          </label>
+          <small class="dc-duration-note">(0 = continuous)</small>
+          <button class="dc-btn-all dc-btn-all-fwd"  id="dc-all-fwd">▶▶ All Fwd</button>
+          <button class="dc-btn-all dc-btn-all-rev"  id="dc-all-rev">◀◀ All Rev</button>
+          <button class="dc-btn-all dc-btn-all-stop" id="dc-all-stop">■ Stop All</button>
+        </div>
 
         <br>
         <button class="autofocusbutton">Autofocus</button>
 
         <!-- ── STAGE NAVIGATION & 6-WELL BOOKMARKS ── -->
-        <div class="scan-box" id="nav_box" style="background:#f8faf8; border-color:#a5d6a7;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b style="color:#1b5e20;">6-Well Stage Navigation &amp; Bookmarks</b>
-                <small style="color:#555;">Go = move · Sync = override coords (no motion) · Set = save current pos</small>
+        <div class="scan-box" id="nav_box">
+            <div class="nav-box-header">
+                <b>6-Well Stage Navigation &amp; Bookmarks</b>
+                <small>Go = move · Sync = override coords (no motion) · Set = save current pos</small>
             </div>
 
             <!-- 2x3 Well Bookmark Grid (Top row first, matching physical plate) -->
-            <div id="nav-bookmark-grid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:8px;">
+            <div id="nav-bookmark-grid">
                 <!-- Populated dynamically by updateNavUI() -->
             </div>
 
             <!-- Direct Coordinate Goto -->
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px; padding-top:6px; border-top:1px dashed #ccc;">
-                <span style="font-size:12px;">Go to XY:</span>
-                <input type="number" id="nav-goto-x" placeholder="X" value="0" style="width:72px; padding:2px 5px; border:1px solid #bbb; border-radius:4px;">
-                <input type="number" id="nav-goto-y" placeholder="Y" value="0" style="width:72px; padding:2px 5px; border:1px solid #bbb; border-radius:4px;">
-                <button type="button" id="btn-nav-goto-xy" style="padding:3px 10px; border:none; border-radius:4px; background:#1565C0; color:#fff; cursor:pointer; font-size:12px;">Move to (X,Y)</button>
+            <div class="nav-goto-row">
+                <span class="nav-goto-label">Go to XY:</span>
+                <input type="number" id="nav-goto-x" class="nav-coord-input" placeholder="X" value="0">
+                <input type="number" id="nav-goto-y" class="nav-coord-input" placeholder="Y" value="0">
+                <button type="button" id="btn-nav-goto-xy">Move to (X,Y)</button>
             </div>
         </div>
 
         <!-- ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── -->
         <div class="scan-box" id="scan_box">
             <b>Circular Boustrophedon Well Scan</b><br>
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:8px 0;">
-                <label style="margin:0; font-weight:normal;">Well:
-                    <select id="scan-well-select" style="padding:2px 5px; border:1px solid #bbb; border-radius:4px;">
+            <div class="scan-config-row">
+                <label>Well:
+                    <select id="scan-well-select">
                         <option value="bottom_middle" selected>bottom_middle</option>
                         <option value="bottom_left">bottom_left</option>
                         <option value="bottom_right">bottom_right</option>
@@ -663,54 +274,41 @@ font-size: 14px;
                         <option value="top_right">top_right</option>
                     </select>
                 </label>
-                <label style="margin:0; font-weight:normal;">R:
-                    <input type="number" id="scan-geom-r" value="1500" style="width:62px; padding:2px 4px; border:1px solid #bbb; border-radius:4px;">
+                <label>R:
+                    <input type="number" id="scan-geom-r" value="1500">
                 </label>
-                <label style="margin:0; font-weight:normal;">ΔX:
-                    <input type="number" id="scan-geom-sx" value="500" style="width:54px; padding:2px 4px; border:1px solid #bbb; border-radius:4px;">
+                <label>ΔX:
+                    <input type="number" id="scan-geom-sx" value="500">
                 </label>
-                <label style="margin:0; font-weight:normal;">ΔY:
-                    <input type="number" id="scan-geom-sy" value="500" style="width:54px; padding:2px 4px; border:1px solid #bbb; border-radius:4px;">
+                <label>ΔY:
+                    <input type="number" id="scan-geom-sy" value="500">
                 </label>
             </div>
             Last scan: &nbsp;<span id="scan_last">Never</span> &nbsp;|&nbsp;
             Auto-schedule: &nbsp;<span id="scan_next">—</span><br>
             <span id="scan_countdown"></span>
             <div id="scan_progress"></div>
-            <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div class="scan-actions-row">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
-                <button class="scannowbutton" id="scannowbtn" type="button" style="background:#546e7a;">6-Chamber Single Shot</button>
+                <button class="scannowbutton secondary-scan-btn" id="scannowbtn" type="button">6-Chamber Single Shot</button>
             </div>
 
             <!-- Post-Scan (0, 0) Landmark Verification Prompt -->
-            <div id="scan-verify-banner" style="display:none; margin-top:10px; padding:8px 10px; background:#e8f5e9; border:1px solid #4caf50; border-radius:6px;">
-                <div id="scan-verify-text" style="font-weight:bold; color:#1b5e20; margin-bottom:6px;">
+            <div id="scan-verify-banner">
+                <div id="scan-verify-text">
                     Returned to (0, 0) `bottom_left` landmark. Is the landmark centered in the live stream?
                 </div>
-                <button type="button" id="btn-verify-yes" style="padding:4px 10px; border:none; border-radius:4px; background:#2e7d32; color:#fff; cursor:pointer; font-size:12px; margin-right:6px;">✔ Yes, Centered</button>
-                <button type="button" id="btn-verify-no" style="padding:4px 10px; border:none; border-radius:4px; background:#e65100; color:#fff; cursor:pointer; font-size:12px;">⚠ Drift Detected — Jog &amp; Re-Zero</button>
+                <button type="button" id="btn-verify-yes">✔ Yes, Centered</button>
+                <button type="button" id="btn-verify-no">⚠ Drift Detected — Jog &amp; Re-Zero</button>
             </div>
         </div>
 
-        {% include 'drive_storage_panel.html' %}
         <!-- ACTION LOG -->
-        <div style="display:flex; justify-content:space-between; align-items:center; max-width:560px; margin-top:12px;">
-            <p style="font-size: x-large; margin:0;">Live Action Log</p>
-            <button type="button" id="btn-clear-log" style="padding:2px 8px; font-family:sans-serif; font-size:11px; border:1px solid #888; border-radius:4px; background:#eee; cursor:pointer;">Clear View</button>
+        <div class="action-log-header">
+            <p>Live Action Log</p>
+            <button type="button" id="btn-clear-log">Clear View</button>
         </div>
-        <div id="action-log" style="
-            height: 200px;
-            overflow-y: auto;
-            background: #111;
-            color: #00ff99;
-            font-family: monospace;
-            font-size: 12px;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            margin-bottom: 12px;
-            max-width: 560px;
-        "></div>
+        <div id="action-log"></div>
 
     </div>
 </div>
@@ -721,7 +319,7 @@ font-size: 14px;
 <div class="bottom-row">
 
     <div class="pastimagecontainer panel" id="capture-browser">
-        <p style="font-size: xx-large;">Image Browser</p>
+        <p class="section-title">Image Browser</p>
 
         <div id="cb-layout">
             <div id="cb-left">
@@ -757,7 +355,7 @@ font-size: 14px;
                 <div id="cb-download-status" class="cb-muted"></div>
             </div>
 
-            <div id="cb-viewer" class="cb-section" style="display:none;">
+            <div id="cb-viewer" class="cb-section">
                 <div class="cb-row">
                     <button id="cb-prev-image" type="button" title="Previous image (left arrow)">&#9664;</button>
                     <span id="cb-caption"></span>
@@ -769,7 +367,7 @@ font-size: 14px;
     </div>
 
     <div class="organoiddetectioncontainer panel">
-        <p style="font-size: xx-large;">Detect Organoids</p>
+        <p class="section-title">Detect Organoids</p>
         <button class="detectorganoid">DETECT</button>
         <img class="detect-img" id="detection_image" src="">
     </div>
@@ -779,895 +377,11 @@ font-size: 14px;
 <!-- ═══════════════════════════════════
      JAVASCRIPT
 ════════════════════════════════════ -->
-<script>
-
-// =========================
-// SOCKET.IO
-// =========================
-const socket = io('/');
-
-// Action log formatting & color-coding
-function formatLogLatency(us) {
-    if (!us || us <= 0) return '';
-    if (us >= 1000000) return ' [' + (us / 1000000).toFixed(2) + ' s]';
-    if (us >= 10000)   return ' [' + Math.round(us / 1000) + ' ms]';
-    return ' [' + us + ' us]';
-}
-
-function classifyLogColor(action) {
-    var a = (action || '').toUpperCase();
-    if (a.indexOf('REJECT') !== -1 || a.indexOf('ERROR') !== -1 || a.indexOf('UNCERTAIN') !== -1) {
-        return '#ff5252'; // red
-    }
-    if (a.indexOf('CLAMP') !== -1 || a.indexOf('SYNC') !== -1 || a.indexOf('DRIFT') !== -1) {
-        return '#ffd54f'; // amber
-    }
-    if (a.indexOf('SCAN_') !== -1 || a.indexOf('CAPTURE_') !== -1) {
-        return '#4dd0e1'; // cyan
-    }
-    return '#00ff99';     // green
-}
-
-function appendLogRow(data, prepend) {
-    var log = document.getElementById('action-log');
-    if (!log) return;
-    var row = document.createElement('div');
-    row.style.color = classifyLogColor(data.action);
-    row.style.padding = '1px 0';
-    row.style.borderBottom = '1px solid #1e1e1e';
-    row.style.whiteSpace = 'pre-wrap';
-    var timeShort = (data.timestamp || '').split(' ').pop() || data.timestamp;
-    var lat = formatLogLatency(data.latency_us);
-    row.textContent = '[' + timeShort + ']  ' + data.action + lat;
-    row.title = data.timestamp || '';
-
-    if (prepend !== false) {
-        log.prepend(row);
-    } else {
-        log.appendChild(row);
-    }
-
-    // Cap at 120 rows so the DOM doesn't grow forever
-    while (log.children.length > 120) {
-        log.removeChild(log.lastChild);
-    }
-}
-
-socket.on('new_action', function(data) {
-    appendLogRow(data, true);
-});
-
-$("#btn-clear-log").click(function() {
-    $("#action-log").empty();
-});
-
-// Detection result
-socket.on('response3', function(msg) {
-    document.getElementById('detection_image').src =
-        "data:image/jpeg;base64," + msg.data;
-});
-
-// System parameters sync on load
-socket.on('system_parameters_to_html', function(msg) {
-    var r = msg.data.data;
-    $("#zoom_text").html(r.zoom);          $("#zoom_slider").val(r.zoom);
-    $("#focus_text").html(r.focus);        $("#focus_slider").val(r.focus);
-    $("#motor_text").html(r.motor_speed);  $("#motor_slider").val(r.motor_speed);
-    $("#spin_dur_text").html(r.spin_duration); $("#spin_dur_slider").val(r.spin_duration);
-    $("#flowdir_text").html(r.flow_direction);
-});
-
-// =========================
-// LED LIGHT CONTROL
-// =========================
-$("#led-btn").click(function() {
-    $.get("/led_toggle", function(state) {
-        if (state === "1") {
-            $("#led-btn").addClass("on");
-        } else {
-            $("#led-btn").removeClass("on");
-        }
-    });
-});
-
-// LED state updates from server
-socket.on('led_state', function(msg) {
-    if (msg.state) {
-        $("#led-btn").addClass("on");
-    } else {
-        $("#led-btn").removeClass("on");
-    }
-});
-
-// Scan status updates
-socket.on('scan_status', function(msg) {
-    $("#scan_last").text(msg.last_scan    || "Never");
-    $("#scan_next").text(msg.next_scan    || "—");
-    $("#scan_progress").text(msg.current_step || "");
-    
-    if (msg.next_scan && msg.next_scan !== "Calculating..." && msg.next_scan !== "—") {
-        updateCountdown(msg.next_scan);
-    }
-    setScanRunning(!!msg.running);
-    if (msg.running) {
-        $("#scan_box").addClass("scan-running");
-        $("#scannowbtn").prop("disabled", true).text("Scanning...");
-        $("#btn-scan-circular").prop("disabled", true).text("Scanning...");
-        $("#scan_countdown").text("");
-    } else {
-        $("#scan_box").removeClass("scan-running");
-        $("#scannowbtn").prop("disabled", false).text("6-Chamber Single Shot");
-        $("#btn-scan-circular").prop("disabled", false).text("▶ Circular Scan Well");
-    }
-});
-
-// =========================
-// STAGE NAVIGATION & BOOKMARKS UI
-// =========================
-var currentJogStep = 250;
-var WELL_GRID_ORDER = [
-    "top_left", "top_middle", "top_right",
-    "bottom_left", "bottom_middle", "bottom_right"
-];
-
-function formatSigned(val) {
-    var n = parseInt(val || 0, 10);
-    return (n >= 0 ? "+" : "") + n;
-}
-
-function updateNavUI(state) {
-    if (!state) return;
-    if (state.current_position) {
-        $("#nav-pos-x").text(formatSigned(state.current_position.x));
-        $("#nav-pos-y").text(formatSigned(state.current_position.y));
-        $("#nav-pos-z").text(formatSigned(state.current_position.z));
-    }
-    $("#nav-uncertain-badge").toggle(!!state.position_uncertain);
-
-    if (state.soft_limits) {
-        $("#nav-lim-x").text(state.soft_limits.min_x + ", " + state.soft_limits.max_x);
-        $("#nav-lim-y").text(state.soft_limits.min_y + ", " + state.soft_limits.max_y);
-    }
-    if (state.geometry && !$("#scan-geom-r").is(":focus") && !$("#scan-geom-sx").is(":focus") && !$("#scan-geom-sy").is(":focus")) {
-        $("#scan-geom-r").val(state.geometry.well_radius_steps);
-        $("#scan-geom-sx").val(state.geometry.step_x);
-        $("#scan-geom-sy").val(state.geometry.step_y);
-    }
-    if (state.bookmarks) {
-        var grid = $("#nav-bookmark-grid");
-        grid.empty();
-        var keys = WELL_GRID_ORDER.slice();
-        Object.keys(state.bookmarks).forEach(function(k) {
-            if (keys.indexOf(k) === -1) keys.push(k);
-        });
-        keys.forEach(function(name) {
-            if (!(name in state.bookmarks)) return;
-            var coords = state.bookmarks[name];
-            var isCurrent = state.current_position &&
-                state.current_position.x === coords[0] &&
-                state.current_position.y === coords[1];
-            var borderCol = isCurrent ? "#2e7d32" : "#c5e1a5";
-            var bgCol     = isCurrent ? "#e8f5e9" : "#ffffff";
-            var card = $(
-                '<div style="border:1px solid ' + borderCol + '; background:' + bgCol + '; border-radius:6px; padding:6px 8px; font-size:12px;">' +
-                    '<div style="font-weight:bold; color:#1b5e20; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + name + '</div>' +
-                    '<div style="font-family:monospace; font-size:11px; color:#555; margin-bottom:4px;">(' + coords[0] + ', ' + coords[1] + ')</div>' +
-                    '<div style="display:flex; gap:3px;">' +
-                        '<button type="button" class="bm-go-btn" data-name="' + name + '" style="flex:1; padding:2px 0; border:none; border-radius:3px; background:#1565C0; color:#fff; cursor:pointer; font-size:11px;" title="Move stage to ' + name + '">Go</button>' +
-                        '<button type="button" class="bm-sync-btn" data-name="' + name + '" style="flex:1; padding:2px 0; border:1px solid #ef6c00; border-radius:3px; background:#fff3e0; color:#e65100; cursor:pointer; font-size:11px;" title="Override software coordinates to ' + name + ' without moving motors">Sync</button>' +
-                        '<button type="button" class="bm-set-btn" data-name="' + name + '" style="flex:1; padding:2px 0; border:1px solid #888; border-radius:3px; background:#f5f5f5; color:#333; cursor:pointer; font-size:11px;" title="Overwrite ' + name + ' with current (X,Y)">Set</button>' +
-                    '</div>' +
-                '</div>'
-            );
-            grid.append(card);
-        });
-    }
-}
-
-socket.on('nav_state', function(state) {
-    updateNavUI(state);
-});
-
-socket.on('scan_verify_prompt', function(info) {
-    $("#scan-verify-text").text(
-        "Scan of '" + info.well + "' complete (" + info.tiles_captured + "/" + info.tiles_total +
-        " tiles). Returned to (0, 0) landmark — is the landmark centered?"
-    );
-    $("#scan-verify-banner").slideDown(150);
-});
-
-$(document).on("click", ".nav-step-btn", function() {
-    currentJogStep = parseInt($(this).data("steps"), 10) || 250;
-    $(".nav-step-btn").css({ background: "#fff", color: "#000", borderColor: "#888" });
-    $(this).css({ background: "#1565C0", color: "#fff", borderColor: "#1565C0" });
-});
-
-$("#btn-nav-zero").click(function() {
-    $.post("/nav/zero", function(state) {
-        updateNavUI(state);
-        $("#scan-verify-banner").slideUp(150);
-    });
-});
-
-$(document).on("click", ".bm-go-btn", function() {
-    var name = $(this).data("name");
-    $.ajax({
-        url: "/nav/goto",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ name: name })
-    });
-});
-
-$(document).on("click", ".bm-sync-btn", function() {
-    var name = $(this).data("name");
-    $.ajax({
-        url: "/nav/reset_to",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ name: name }),
-        success: function(state) { updateNavUI(state); }
-    });
-});
-
-$(document).on("click", ".bm-set-btn", function() {
-    var name = $(this).data("name");
-    if (!confirm("Overwrite bookmark '" + name + "' with current stage position?")) return;
-    $.ajax({
-        url: "/nav/mark",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ name: name }),
-        success: function(state) { updateNavUI(state); }
-    });
-});
-
-$("#btn-nav-goto-xy").click(function() {
-    var tx = parseInt($("#nav-goto-x").val(), 10) || 0;
-    var ty = parseInt($("#nav-goto-y").val(), 10) || 0;
-    $.ajax({
-        url: "/nav/goto",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ x: tx, y: ty })
-    });
-});
-
-$("#btn-scan-circular").click(function() {
-    var well = $("#scan-well-select").val() || "bottom_middle";
-    var r    = parseInt($("#scan-geom-r").val(), 10)  || 1500;
-    var sx   = parseInt($("#scan-geom-sx").val(), 10) || 500;
-    var sy   = parseInt($("#scan-geom-sy").val(), 10) || 500;
-    $("#scan-verify-banner").hide();
-    $.ajax({
-        url: "/nav/scan_well",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ well: well, radius: r, step_x: sx, step_y: sy }),
-        error: function(xhr) {
-            var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : "Could not start scan";
-            alert(msg);
-        }
-    });
-});
-
-$("#btn-verify-yes").click(function() {
-    $.post("/nav/verify_landmark", { centered: "true" });
-    $("#scan-verify-banner").slideUp(150);
-});
-
-$("#btn-verify-no").click(function() {
-    $.post("/nav/verify_landmark", { centered: "false" });
-    $("#scan-verify-banner").slideUp(150);
-});
-
-
-// =========================
-// MOTION CONTROLS
-// =========================
-// Press moves once; holding repeats until release. The server drops a request
-// while the axis is still moving, so the repeat interval only needs to be short.
-var HOLD_REPEAT_MS = 100;
-
-var scanRunning  = false;
-var scanOverride = false;  // user confirmed manual moves for the current scan
-var MOVE_BUTTONS = "#btn-forward, #btn-backward, #btn-left, #btn-right, #btn-up, #btn-down";
-
-function updateMotionLock() {
-    $(MOVE_BUTTONS).prop("disabled", scanRunning && !scanOverride);
-    $("#scan-lock-notice").toggle(scanRunning);
-    $("#scan-unlock-btn").toggle(!scanOverride);
-    $("#scan-lock-text").text(scanOverride
-        ? "Manual override active. The rest of this scan will be misaligned."
-        : "Scan in progress: manual movement is locked.");
-}
-
-function setScanRunning(running) {
-    scanRunning = running;
-    if (!running) scanOverride = false;
-    updateMotionLock();
-}
-
-$("#scan-unlock-btn").click(function() {
-    var confirmed = confirm(
-        "A scan is running. Moving the stage manually will shift the remaining " +
-        "chamber positions, because the motors have no position feedback.\n\n" +
-        "Unlock manual movement anyway?");
-    if (confirmed) {
-        scanOverride = true;
-        updateMotionLock();
-    }
-});
-
-function moveParams(isRepeat) {
-    var params = {};
-    if (isRepeat) {
-        params.repeat = 1;
-    } else {
-        params.steps = currentJogStep;
-    }
-    if (scanOverride) params.override = 1;
-    return params;
-}
-
-function bindHoldToMove(buttonId, url) {
-    var repeatTimer = null;
-    var pressStartMs = 0;
-    var burstsAccepted = 0;   // responses of "OK"; the server answers "BUSY" mid-burst
-    var requestsInFlight = 0;
-    var reportWhenSettled = false;
-
-    function sendMove(isRepeat) {
-        requestsInFlight++;
-        $.get(url, moveParams(isRepeat))
-            .done(function(response) { if (response === "OK") burstsAccepted++; })
-            .always(function() {
-                requestsInFlight--;
-                if (reportWhenSettled && requestsInFlight === 0) reportHoldEnd();
-            });
-    }
-
-    // A single tap is already in the log as the press, so only report real holds
-    function reportHoldEnd() {
-        reportWhenSettled = false;
-        if (burstsAccepted <= 1) return;
-        $.get("/move_hold_end", {
-            direction: url.slice(1),
-            seconds: ((Date.now() - pressStartMs) / 1000).toFixed(1),
-            bursts: burstsAccepted
-        });
-    }
-
-    function stopRepeating() {
-        if (repeatTimer === null) return;
-        clearInterval(repeatTimer);
-        repeatTimer = null;
-        // The count is only final once the last responses have come back
-        if (requestsInFlight === 0) reportHoldEnd(); else reportWhenSettled = true;
-    }
-
-    $(buttonId).on("pointerdown", function(event) {
-        if (event.button !== 0 || repeatTimer !== null) return;
-        pressStartMs = Date.now();
-        burstsAccepted = 0;
-        sendMove(false);
-        repeatTimer = setInterval(function() { sendMove(true); }, HOLD_REPEAT_MS);
-    });
-    // Listen on window so releasing the pointer off the button still stops it
-    $(window).on("pointerup pointercancel blur", stopRepeating);
-    // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
-    $(buttonId).on("click", function(event) {
-        if (event.detail === 0) $.get(url, moveParams(false));
-    });
-}
-
-bindHoldToMove("#btn-forward",  "/forward");
-bindHoldToMove("#btn-backward", "/backward");
-bindHoldToMove("#btn-left",     "/left");
-bindHoldToMove("#btn-right",    "/right");
-bindHoldToMove("#btn-up",       "/up");
-bindHoldToMove("#btn-down",     "/down");
-$("#btn-stop").click(function()     { $.get("/stop"); });
-
-
-// =========================
-// ZOOM / FOCUS
-// =========================
-function fetchdata_zoom_focus() {
-    $.getJSON({ type:"GET", url:'/update_parameters_zoom_focus',
-        data: { zoom: $('#zoom_slider').val(), focus: $('#focus_slider').val() }
-    });
-}
-$("#zoom_slider").change(function()  { $("#zoom_text").html($(this).val());  fetchdata_zoom_focus(); });
-$("#focus_slider").change(function() { $("#focus_text").html($(this).val()); fetchdata_zoom_focus(); });
-
-$(".zoomplus").click(function() {
-    var s = $("#zoom_slider"), v = Math.min(20000, +s.val() + +s.attr('step'));
-    s.val(v); $("#zoom_text").html(v); fetchdata_zoom_focus();
-});
-$(".zoomminus").click(function() {
-    var s = $("#zoom_slider"), v = Math.max(0, +s.val() - +s.attr('step'));
-    s.val(v); $("#zoom_text").html(v); fetchdata_zoom_focus();
-});
-$(".focusplus").click(function() {
-    var s = $("#focus_slider"), v = Math.min(20000, +s.val() + +s.attr('step'));
-    s.val(v); $("#focus_text").html(v); fetchdata_zoom_focus();
-});
-$(".focusminus").click(function() {
-    var s = $("#focus_slider"), v = Math.max(0, +s.val() - +s.attr('step'));
-    s.val(v); $("#focus_text").html(v); fetchdata_zoom_focus();
-});
-
-// ── DC Motor helpers ────────────────────────────────────────
- 
-function dcSend(ch, speed, direction, duration) {
-    $.get('/dc_motor', {
-        ch: ch, speed: speed, direction: direction,
-        duration: duration
-    });
-    updateDcStatus(ch, speed, direction);
-}
- 
-var dcDirection = {};  // channel -> 'FORWARD' | 'BACKWARD' | 'STOP', as last known
-
-function updateDcStatus(ch, speed, direction) {
-    var el = $('#dc-st-' + ch);
-    dcDirection[ch] = (speed == 0) ? 'STOP' : direction;
-    el.removeClass('running reverse');
-    if (direction === 'STOP' || speed == 0) {
-        el.text('● Stopped');
-    } else if (direction === 'FORWARD') {
-        el.addClass('running').text('▶ Running FWD @ ' + parseFloat(speed).toFixed(2));
-    } else {
-        el.addClass('reverse').text('◀ Running REV @ ' + parseFloat(speed).toFixed(2));
-    }
-}
- 
-// Speed slider labels
-function syncDcSliderLabel(slider) {
-    $('#dc-sv-' + $(slider).data('ch')).text(parseFloat($(slider).val()).toFixed(2));
-}
-
-$(document).on('input', '.dc-speed-slider', function() { syncDcSliderLabel(this); });
-
-// Browsers can restore slider positions without firing 'input'
-$(window).on('pageshow', function() { $('.dc-speed-slider').each(function() { syncDcSliderLabel(this); }); });
- 
-// Releasing a slider on a running channel applies the new speed immediately.
-// Re-sends the duration field, which restarts that channel's auto-stop timer.
-$(document).on('change', '.dc-speed-slider', function() {
-    var ch = $(this).data('ch');
-    var direction = dcDirection[ch];
-    if (direction !== 'FORWARD' && direction !== 'BACKWARD') return;
-    var dur = parseFloat($('#dc-duration').val()) || 0;
-    dcSend(ch, parseFloat($(this).val()), direction, dur);
-});
-
-// Forward button
-$(document).on('click', '.btn-fwd', function() {
-    var ch   = $(this).data('ch');
-    var spd  = parseFloat($('.dc-speed-slider[data-ch=' + ch + ']').val());
-    var dur  = parseFloat($('#dc-duration').val()) || 0;
-    dcSend(ch, spd, 'FORWARD', dur);
-});
- 
-// Reverse button
-$(document).on('click', '.btn-rev', function() {
-    var ch  = $(this).data('ch');
-    var spd = parseFloat($('.dc-speed-slider[data-ch=' + ch + ']').val());
-    var dur = parseFloat($('#dc-duration').val()) || 0;
-    dcSend(ch, spd, 'BACKWARD', dur);
-});
- 
-// Stop single channel
-$(document).on('click', '.btn-stop-ch', function() {
-    var ch = $(this).data('ch');
-    $.get('/dc_motor_stop', { ch: ch });
-    updateDcStatus(ch, 0, 'STOP');
-});
- 
-// Stop all
-$('#dc-all-stop').click(function() {
-    $.get('/dc_motor_stop');
-    for (var i = 1; i <= 4; i++) updateDcStatus(i, 0, 'STOP');
-});
- 
-// All Forward
-$('#dc-all-fwd').click(function() {
-    var dur = parseFloat($('#dc-duration').val()) || 0;
-    for (var i = 1; i <= 4; i++) {
-        var spd = parseFloat($('.dc-speed-slider[data-ch=' + i + ']').val());
-        dcSend(i, spd, 'FORWARD', dur);
-    }
-});
- 
-// All Reverse
-$('#dc-all-rev').click(function() {
-    var dur = parseFloat($('#dc-duration').val()) || 0;
-    for (var i = 1; i <= 4; i++) {
-        var spd = parseFloat($('.dc-speed-slider[data-ch=' + i + ']').val());
-        dcSend(i, spd, 'BACKWARD', dur);
-    }
-});
- 
-// Poll live state every 2 s (syncs status text if server auto-stopped after duration).
-// Sliders are the pending speed for the next Fwd/Rev press, so they are not synced.
-setInterval(function() {
-    $.getJSON('/dc_motor_states', function(states) {
-        $.each(states, function(ch, throttle) {
-            ch = parseInt(ch);
-            var speed = Math.abs(throttle);
-            var dir   = throttle > 0 ? 'FORWARD' : throttle < 0 ? 'BACKWARD' : 'STOP';
-            updateDcStatus(ch, speed, dir);
-        });
-    });
-}, 2000);
-
-// =========================
-// AUTOFOCUS
-// =========================
-$(".autofocusbutton").click(function() {
-    $.getJSON({ type:"GET", url:'/autofocus_camera_from_html' });
-});
-
-
-// =========================
-// SCAN NOW — position modal
-// =========================
-$("#scannowbtn").click(function() {
-    // Show the custom position-check modal instead of browser confirm()
-    $("#position-modal-overlay").addClass("active");
-});
-
-$("#modal-yes").click(function() {
-    $("#position-modal-overlay").removeClass("active");
-    $.get("/scan_now");
-});
-
-$("#modal-no").click(function() {
-    $("#position-modal-overlay").removeClass("active");
-});
-
-// Also close modal if user clicks the dark overlay background
-$("#position-modal-overlay").click(function(e) {
-    if (e.target === this) {
-        $(this).removeClass("active");
-    }
-});
-
-
-
-// =========================
-// DETECT ORGANOID
-// =========================
-$(".detectorganoid").click(function() {
-    $.getJSON({ type:"GET", url:'/detect_organoid' });
-});
-
-
-// =========================
-// IMAGE BROWSER
-// =========================
-var captureBrowser = {
-    dates: [],          // [{date, scans}] newest first
-    date: null,
-    scans: [],          // scans on the current date
-    scanIndex: -1,
-    shown: [],          // captures of the current scan
-    viewIndex: -1,
-    selected: {}        // capture name -> bytes; survives changing scan or date
-};
-
-function formatBytes(bytes) {
-    if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
-
-function cbSetMessage(text) { $("#cb-message").text(text); }
-
-function cbLoadDates(thenShowLatest) {
-    $.getJSON("/captures/dates", function(response) {
-        captureBrowser.dates = response.dates;
-        if (response.dates.length === 0) {
-            cbSetMessage("No captures in the cloud yet.");
-            return;
-        }
-        var newest = response.dates[0].date;
-        var oldest = response.dates[response.dates.length - 1].date;
-        $("#cb-date").attr({ min: oldest, max: newest });
-        if (thenShowLatest) cbShowDate(newest);
-    }).fail(function() { cbSetMessage("Could not load the list of captures."); });
-}
-
-function cbShowDate(date) {
-    captureBrowser.date = date;
-    $("#cb-date").val(date);
-    $("#cb-date-info").text("");
-    $("#cb-scan-times, #cb-grid").empty();
-    $("#cb-viewer").hide();
-    cbSetMessage("Loading...");
-    $.getJSON("/captures/scans", { date: date }, function(response) {
-        captureBrowser.scans = response.scans;
-        $("#cb-date-info").text(response.scans.length + " scan" + (response.scans.length === 1 ? "" : "s"));
-        if (response.scans.length === 0) {
-            cbSetMessage("No scans on this date. Use the arrows to jump to a day that has scans.");
-            captureBrowser.scanIndex = -1;
-            captureBrowser.shown = [];
-            return;
-        }
-        cbSetMessage("");
-        response.scans.forEach(function(scan, index) {
-            $("<button type='button' class='cb-time'>").text(scan.time).data("index", index)
-                .appendTo("#cb-scan-times");
-        });
-        cbShowScan(response.scans.length - 1);   // latest scan of the day
-    }).fail(function() { cbSetMessage("Could not load scans for this date."); });
-}
-
-function cbShowScan(index) {
-    captureBrowser.scanIndex = index;
-    captureBrowser.shown = captureBrowser.scans[index].captures;
-    $(".cb-time").each(function() { $(this).toggleClass("active", $(this).data("index") === index); });
-    $("#cb-grid").empty();
-    captureBrowser.shown.forEach(function(capture, position) {
-        var card = $("<div class='cb-card'>").data("position", position);
-        $("<img loading='lazy' alt=''>").attr("src", "/captures/image/" + capture.name + "?thumb=1")
-            .addClass("cb-thumb").appendTo(card);
-        $("<input type='checkbox' class='cb-check'>").prop("checked", !!captureBrowser.selected[capture.name])
-            .attr("title", "Select for download").appendTo(card);
-        $("<div class='cb-label'>").text(capture.chamber.replace("_", " ") + " " + capture.time).appendTo(card);
-        card.appendTo("#cb-grid");
-    });
-    cbShowImage(0);
-}
-
-function cbShowImage(position) {
-    var shown = captureBrowser.shown;
-    if (shown.length === 0) return;
-    position = (position + shown.length) % shown.length;
-    captureBrowser.viewIndex = position;
-    var capture = shown[position];
-    $("#past_image").attr("src", "/captures/image/" + capture.name);
-    $("#cb-caption").text(capture.chamber.replace("_", " ") + " \u00b7 " + captureBrowser.date + " " +
-                          capture.time + " (" + (position + 1) + "/" + shown.length + ")");
-    $(".cb-card").each(function() { $(this).toggleClass("viewing", $(this).data("position") === position); });
-    $("#cb-viewer").show();
-}
-
-function cbUpdateSelection() {
-    var names = Object.keys(captureBrowser.selected);
-    var total = names.reduce(function(sum, name) { return sum + captureBrowser.selected[name]; }, 0);
-    $("#cb-download-selected").prop("disabled", names.length === 0)
-        .text(names.length === 0 ? "Download selected"
-              : "Download " + names.length + " selected (" + formatBytes(total) + ")");
-}
-
-// Fetch as a blob rather than navigating, so an error shows here and the page is not replaced
-function cbDownloadZip(query, button) {
-    var label = button.text();
-    button.prop("disabled", true);
-    $("#cb-download-status").removeClass("cb-error").text("Preparing zip...");
-    fetch("/captures/zip?" + query).then(function(response) {
-        if (!response.ok) {
-            return response.json().then(function(body) { throw new Error(body.error || "Download failed"); });
-        }
-        var filename = (response.headers.get("Content-Disposition") || "").split("filename=")[1] || "captures.zip";
-        return response.blob().then(function(blob) {
-            var link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = filename.replace(/"/g, "");
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(function() { URL.revokeObjectURL(link.href); }, 10000);
-            $("#cb-download-status").text("Downloaded " + formatBytes(blob.size));
-        });
-    }).catch(function(error) {
-        $("#cb-download-status").addClass("cb-error").text(error.message);
-    }).then(function() {
-        button.prop("disabled", false).text(label);
-        cbUpdateSelection();
-    });
-}
-
-$(document).on("click", ".cb-time", function() { cbShowScan($(this).data("index")); });
-$(document).on("click", ".cb-thumb", function() { cbShowImage($(this).closest(".cb-card").data("position")); });
-$(document).on("change", ".cb-check", function() {
-    var capture = captureBrowser.shown[$(this).closest(".cb-card").data("position")];
-    if (this.checked) captureBrowser.selected[capture.name] = capture.bytes;
-    else delete captureBrowser.selected[capture.name];
-    cbUpdateSelection();
-});
-
-$("#cb-select-all").click(function() {
-    captureBrowser.shown.forEach(function(capture) { captureBrowser.selected[capture.name] = capture.bytes; });
-    $(".cb-check").prop("checked", true);
-    cbUpdateSelection();
-});
-$("#cb-select-none").click(function() {
-    captureBrowser.selected = {};
-    $(".cb-check").prop("checked", false);
-    cbUpdateSelection();
-});
-
-$("#cb-download-selected").click(function() {
-    cbDownloadZip($.param({ name: Object.keys(captureBrowser.selected) }, true), $(this));
-});
-$("#cb-download-range").click(function() {
-    var from = $("#datetime_from").val(), to = $("#datetime_to").val();
-    if (!from || !to || to < from) {
-        $("#cb-download-status").addClass("cb-error").text("Choose a From and a To, with To after From.");
-        return;
-    }
-    cbDownloadZip($.param({ from: from, to: to }), $(this));
-});
-
-$("#cb-date").change(function() { if ($(this).val()) cbShowDate($(this).val()); });
-$("#cb-latest").click(function() { cbLoadDates(true); });
-function cbStepDay(direction) {   // direction -1 = older, +1 = newer (dates are listed newest first)
-    var dates = captureBrowser.dates.map(function(entry) { return entry.date; });
-    var candidates = dates.filter(function(date) {
-        return direction < 0 ? date < captureBrowser.date : date > captureBrowser.date;
-    });
-    if (candidates.length === 0) return;
-    cbShowDate(direction < 0 ? candidates[0] : candidates[candidates.length - 1]);
-}
-$("#cb-prev-day").click(function() { cbStepDay(-1); });
-$("#cb-next-day").click(function() { cbStepDay(1); });
-$("#cb-prev-image").click(function() { cbShowImage(captureBrowser.viewIndex - 1); });
-$("#cb-next-image").click(function() { cbShowImage(captureBrowser.viewIndex + 1); });
-
-$(document).on("keydown", function(event) {
-    if ($(event.target).is("input, textarea, select") || $("#cb-viewer").is(":hidden")) return;
-    if (event.key === "ArrowLeft")  cbShowImage(captureBrowser.viewIndex - 1);
-    if (event.key === "ArrowRight") cbShowImage(captureBrowser.viewIndex + 1);
-});
-
-cbLoadDates(true);
-
-
-// =========================
-// PAGE LOAD
-// =========================
-
-// Countdown timer for next scan
-function updateCountdown(nextScanStr) {
-// Clear any existing timer
-if (window.countdownInterval) {
-clearInterval(window.countdownInterval);
-}
-window.countdownInterval = setInterval(function() {
-var now = new Date();
-var nextScan = new Date(nextScanStr);
-var diff = nextScan - now;
-if (diff <= 0) {
-$("#scan_countdown").text("Starting scan...");
-clearInterval(window.countdownInterval);
-return;
-}
-var hours = Math.floor(diff / (1000 * 60 * 60));
-var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-var seconds = Math.floor((diff % (1000 * 60)) / 1000);
-$("#scan_countdown").text(
-"⏱ Next scan in: " + 
-(hours > 0 ? hours + "h " : "") +
-minutes + "m " + 
-seconds + "s"
-);
-}, 1000);
-}
-// Also update countdown every 30s from polling
-setInterval(function() {
-$.getJSON('/scan_status', function(data) {
-if (data.next_scan && data.next_scan !== "Calculating..." && data.next_scan !== 
-"—") {
-updateCountdown(data.next_scan);
-}
-});
-}, 30000);
-
-function updateHardwareBanner(disconnected) {
-    var banner = document.getElementById('hardware-error-banner');
-    if (disconnected && disconnected.length > 0) {
-        banner.textContent = '\u26a0 Disconnected Hardware: ' + disconnected.join('  |  ');
-        banner.style.display = 'block';
-    } else {
-        banner.style.display = 'none';
-    }
-}
-
-var _lastCameraSeq = null;
-var _cameraWasStalled = false;
-var _lastStreamReconnectMs = 0;
-
-function reconnectVideoStream() {
-    var now = Date.now();
-    if (now - _lastStreamReconnectMs < 3000) return;
-    _lastStreamReconnectMs = now;
-    var img = document.getElementById('camera_feed');
-    if (img) {
-        img.src = '/video?t=' + now;
-    }
-}
-
-function updateCameraWatchdog(camera) {
-    if (!camera) return;
-    var statusEl = document.getElementById('stream_status');
-    var img = document.getElementById('camera_feed');
-
-    if (!camera.connected) {
-        statusEl.textContent = '\u26a0 Camera not connected.';
-        _cameraWasStalled = true;
-        return;
-    }
-
-    var seqStalled = (_lastCameraSeq !== null && camera.frame_seq === _lastCameraSeq);
-    _lastCameraSeq = camera.frame_seq;
-
-    if (!camera.streaming || seqStalled) {
-        statusEl.textContent = '\u26a0 Camera stream stalled \u2014 auto-recovering...';
-        _cameraWasStalled = true;
-        return;
-    }
-
-    // Stream is healthy on the backend
-    if (_cameraWasStalled || (img && img.complete && img.naturalWidth === 0)) {
-        _cameraWasStalled = false;
-        statusEl.textContent = '';
-        reconnectVideoStream();
-    } else {
-        statusEl.textContent = '';
-    }
-}
-
-socket.on('hardware_status', function(msg) {
-    updateHardwareBanner(msg.disconnected);
-    if (msg.camera) updateCameraWatchdog(msg.camera);
-});
-
-socket.on('connect', function() {
-    if (_lastCameraSeq !== null) {
-        reconnectVideoStream();
-    }
-});
-
-window.onload = function() {
-    $.getJSON({ type:"GET", url:'/get_system_parameters_from_html' });
-    $.getJSON('/nav/state', function(state) { updateNavUI(state); });
-    $.getJSON('/recent_logs', function(res) {
-        if (res && res.logs) {
-            $("#action-log").empty();
-            res.logs.forEach(function(item) { appendLogRow(item, false); });
-        }
-    });
-    $.getJSON('/scan_status', function(data) { setScanRunning(!!data.running); });
-    $.getJSON('/hardware_status', function(data) {
-        updateHardwareBanner(data.disconnected);
-        updateCameraWatchdog(data.camera);
-    });
-    // Poll hardware & camera watchdog every 5s to detect stalled feeds and auto-reconnect
-    setInterval(function() {
-        $.getJSON('/hardware_status', function(data) {
-            updateHardwareBanner(data.disconnected);
-            updateCameraWatchdog(data.camera);
-        }).fail(function() {
-            _cameraWasStalled = true;
-            document.getElementById('stream_status').textContent = '\u26a0 Server connection lost \u2014 reconnecting...';
-        });
-    }, 5000);
-    // Also poll scan status every 30s in case socket misses an update
-    setInterval(function() {
-        $.getJSON('/scan_status', function(data) {
-            $("#scan_last").text(data.last_scan || "Never");
-            $("#scan_next").text(data.next_scan || "—");
-            $("#scan_progress").text(data.current_step || "");
-            if (data.next_scan && data.next_scan !== "Calculating..." && data.next_scan !== "—") {
-                updateCountdown(data.next_scan);
-            }
-        });
-    }, 30000);
-};
-
-</script>
+<script src="{{ url_for('static', filename='js/socket-log.js') }}"></script>
+<script src="{{ url_for('static', filename='js/stage-motion.js') }}"></script>
+<script src="{{ url_for('static', filename='js/parameters-motors.js') }}"></script>
+<script src="{{ url_for('static', filename='js/scanner-detect.js') }}"></script>
+<script src="{{ url_for('static', filename='js/image-browser.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
