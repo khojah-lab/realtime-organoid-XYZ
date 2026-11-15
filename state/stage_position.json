@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-12T13:04:30",
+  "updated_at": "2026-11-15T15:11:15",
   "in_motion": false,
   "position_uncertain": false,
   "current_position": {
-    "x": 1500,
-    "y": 50,
+    "x": 0,
+    "y": 0,
     "z": 0
   },
   "soft_limits": {

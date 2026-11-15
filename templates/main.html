@@ -379,6 +379,30 @@ font-size: 14px;
                 <div class="controls-label">LED LIGHT</div>
             </div>
 
+            <!-- Live Stage Coordinates & Step Size -->
+            <div style="font-family: sans-serif; font-size: 13px; background: #f7f9ff; border: 1px solid #ccd6eb; border-radius: 8px; padding: 10px 14px; min-width: 280px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <b style="color:#1a237e;">Stage Position (steps)</b>
+                    <span id="nav-uncertain-badge" style="display:none; background:#ffebee; color:#c62828; border:1px solid #ef5350; border-radius:4px; padding:1px 6px; font-size:11px; font-weight:bold;">⚠ UNCERTAIN</span>
+                </div>
+                <div style="font-family: monospace; font-size: 15px; font-weight: bold; color: #111; margin-bottom: 6px;">
+                    X: <span id="nav-pos-x">+0</span> &nbsp;|&nbsp;
+                    Y: <span id="nav-pos-y">+0</span> &nbsp;|&nbsp;
+                    Z: <span id="nav-pos-z">+0</span>
+                </div>
+                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                    Limits: X [<span id="nav-lim-x">-1800, 9400</span>] · Y [<span id="nav-lim-y">-1200, 6500</span>]
+                </div>
+                <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                    <span style="font-size:12px; color:#333;">Tap Step:</span>
+                    <button type="button" class="nav-step-btn" data-steps="50" style="padding:2px 7px; border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">50</button>
+                    <button type="button" class="nav-step-btn active-step" data-steps="250" style="padding:2px 7px; border:1px solid #1565C0; border-radius:4px; background:#1565C0; color:#fff; cursor:pointer; font-size:12px;">250</button>
+                    <button type="button" class="nav-step-btn" data-steps="500" style="padding:2px 7px; border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">500</button>
+                    <button type="button" class="nav-step-btn" data-steps="1000" style="padding:2px 7px; border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">1000</button>
+                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark" style="margin-left:auto; padding:3px 9px; border:none; border-radius:4px; background:#2e7d32; color:#fff; cursor:pointer; font-size:12px; font-weight:bold;">Zero (0,0)</button>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -604,24 +628,77 @@ font-size: 14px;
         <br>
         <button class="autofocusbutton">Autofocus</button>
 
-        <!-- ── AUTOMATED SCAN STATUS ── -->
+        <!-- ── STAGE NAVIGATION & 6-WELL BOOKMARKS ── -->
+        <div class="scan-box" id="nav_box" style="background:#f8faf8; border-color:#a5d6a7;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <b style="color:#1b5e20;">6-Well Stage Navigation &amp; Bookmarks</b>
+                <small style="color:#555;">Go = move · Sync = override coords (no motion) · Set = save current pos</small>
+            </div>
+
+            <!-- 2x3 Well Bookmark Grid (Top row first, matching physical plate) -->
+            <div id="nav-bookmark-grid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:8px;">
+                <!-- Populated dynamically by updateNavUI() -->
+            </div>
+
+            <!-- Direct Coordinate Goto -->
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px; padding-top:6px; border-top:1px dashed #ccc;">
+                <span style="font-size:12px;">Go to XY:</span>
+                <input type="number" id="nav-goto-x" placeholder="X" value="0" style="width:72px; padding:2px 5px; border:1px solid #bbb; border-radius:4px;">
+                <input type="number" id="nav-goto-y" placeholder="Y" value="0" style="width:72px; padding:2px 5px; border:1px solid #bbb; border-radius:4px;">
+                <button type="button" id="btn-nav-goto-xy" style="padding:3px 10px; border:none; border-radius:4px; background:#1565C0; color:#fff; cursor:pointer; font-size:12px;">Move to (X,Y)</button>
+            </div>
+        </div>
+
+        <!-- ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── -->
         <div class="scan-box" id="scan_box">
-            <b>Automated Chamber Scan (6-well plate)</b><br>
-            Last scan: &nbsp;<span id="scan_last">Never</span><br>
-            Next scan: &nbsp;<span id="scan_next">Calculating...</span><br>
-            <span id="scan_countdown"></span><br>
-	    <div id="scan_progress"></div>
-            <br>
-            <button class="scannowbutton" id="scannowbtn">▶ Scan Now</button>
-            <small style="color:#777; font-size:11px;">
-                Ensure camera is at bottom-right chamber before scanning.
-            </small>
+            <b>Circular Boustrophedon Well Scan</b><br>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:8px 0;">
+                <label style="margin:0; font-weight:normal;">Well:
+                    <select id="scan-well-select" style="padding:2px 5px; border:1px solid #bbb; border-radius:4px;">
+                        <option value="bottom_middle" selected>bottom_middle</option>
+                        <option value="bottom_left">bottom_left</option>
+                        <option value="bottom_right">bottom_right</option>
+                        <option value="top_left">top_left</option>
+                        <option value="top_middle">top_middle</option>
+                        <option value="top_right">top_right</option>
+                    </select>
+                </label>
+                <label style="margin:0; font-weight:normal;">R:
+                    <input type="number" id="scan-geom-r" value="1500" style="width:62px; padding:2px 4px; border:1px solid #bbb; border-radius:4px;">
+                </label>
+                <label style="margin:0; font-weight:normal;">ΔX:
+                    <input type="number" id="scan-geom-sx" value="500" style="width:54px; padding:2px 4px; border:1px solid #bbb; border-radius:4px;">
+                </label>
+                <label style="margin:0; font-weight:normal;">ΔY:
+                    <input type="number" id="scan-geom-sy" value="500" style="width:54px; padding:2px 4px; border:1px solid #bbb; border-radius:4px;">
+                </label>
+            </div>
+            Last scan: &nbsp;<span id="scan_last">Never</span> &nbsp;|&nbsp;
+            Auto-schedule: &nbsp;<span id="scan_next">—</span><br>
+            <span id="scan_countdown"></span>
+            <div id="scan_progress"></div>
+            <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
+                <button class="scannowbutton" id="scannowbtn" type="button" style="background:#546e7a;">6-Chamber Single Shot</button>
+            </div>
+
+            <!-- Post-Scan (0, 0) Landmark Verification Prompt -->
+            <div id="scan-verify-banner" style="display:none; margin-top:10px; padding:8px 10px; background:#e8f5e9; border:1px solid #4caf50; border-radius:6px;">
+                <div id="scan-verify-text" style="font-weight:bold; color:#1b5e20; margin-bottom:6px;">
+                    Returned to (0, 0) `bottom_left` landmark. Is the landmark centered in the live stream?
+                </div>
+                <button type="button" id="btn-verify-yes" style="padding:4px 10px; border:none; border-radius:4px; background:#2e7d32; color:#fff; cursor:pointer; font-size:12px; margin-right:6px;">✔ Yes, Centered</button>
+                <button type="button" id="btn-verify-no" style="padding:4px 10px; border:none; border-radius:4px; background:#e65100; color:#fff; cursor:pointer; font-size:12px;">⚠ Drift Detected — Jog &amp; Re-Zero</button>
+            </div>
         </div>
 
         <!-- ACTION LOG -->
-        <p style="font-size: x-large;">Live Action Log</p>
+        <div style="display:flex; justify-content:space-between; align-items:center; max-width:560px; margin-top:12px;">
+            <p style="font-size: x-large; margin:0;">Live Action Log</p>
+            <button type="button" id="btn-clear-log" style="padding:2px 8px; font-family:sans-serif; font-size:11px; border:1px solid #888; border-radius:4px; background:#eee; cursor:pointer;">Clear View</button>
+        </div>
         <div id="action-log" style="
-            height: 180px;
+            height: 200px;
             overflow-y: auto;
             background: #111;
             color: #00ff99;
@@ -631,6 +708,7 @@ font-size: 14px;
             border-radius: 6px;
             border: 1px solid #333;
             margin-bottom: 12px;
+            max-width: 560px;
         "></div>
 
     </div>
@@ -707,18 +785,59 @@ font-size: 14px;
 // =========================
 const socket = io('/');
 
-// Action log
-socket.on('new_action', function(data) {
-    var log = document.getElementById('action-log');
-    var row = document.createElement('div');
-    var lat = data.latency_us ? ' (' + data.latency_us + ' us)' : '';
-    row.textContent = '[' + data.timestamp + ']  ' + data.action + lat;
-    log.prepend(row);
+// Action log formatting & color-coding
+function formatLogLatency(us) {
+    if (!us || us <= 0) return '';
+    if (us >= 1000000) return ' [' + (us / 1000000).toFixed(2) + ' s]';
+    if (us >= 10000)   return ' [' + Math.round(us / 1000) + ' ms]';
+    return ' [' + us + ' us]';
+}
 
-    // Cap at 100 rows so the DOM doesn't grow forever
-    while (log.children.length > 100) {
+function classifyLogColor(action) {
+    var a = (action || '').toUpperCase();
+    if (a.indexOf('REJECT') !== -1 || a.indexOf('ERROR') !== -1 || a.indexOf('UNCERTAIN') !== -1) {
+        return '#ff5252'; // red
+    }
+    if (a.indexOf('CLAMP') !== -1 || a.indexOf('SYNC') !== -1 || a.indexOf('DRIFT') !== -1) {
+        return '#ffd54f'; // amber
+    }
+    if (a.indexOf('SCAN_') !== -1 || a.indexOf('CAPTURE_') !== -1) {
+        return '#4dd0e1'; // cyan
+    }
+    return '#00ff99';     // green
+}
+
+function appendLogRow(data, prepend) {
+    var log = document.getElementById('action-log');
+    if (!log) return;
+    var row = document.createElement('div');
+    row.style.color = classifyLogColor(data.action);
+    row.style.padding = '1px 0';
+    row.style.borderBottom = '1px solid #1e1e1e';
+    row.style.whiteSpace = 'pre-wrap';
+    var timeShort = (data.timestamp || '').split(' ').pop() || data.timestamp;
+    var lat = formatLogLatency(data.latency_us);
+    row.textContent = '[' + timeShort + ']  ' + data.action + lat;
+    row.title = data.timestamp || '';
+
+    if (prepend !== false) {
+        log.prepend(row);
+    } else {
+        log.appendChild(row);
+    }
+
+    // Cap at 120 rows so the DOM doesn't grow forever
+    while (log.children.length > 120) {
         log.removeChild(log.lastChild);
     }
+}
+
+socket.on('new_action', function(data) {
+    appendLogRow(data, true);
+});
+
+$("#btn-clear-log").click(function() {
+    $("#action-log").empty();
 });
 
 // Detection result
@@ -772,11 +891,173 @@ socket.on('scan_status', function(msg) {
     if (msg.running) {
         $("#scan_box").addClass("scan-running");
         $("#scannowbtn").prop("disabled", true).text("Scanning...");
+        $("#btn-scan-circular").prop("disabled", true).text("Scanning...");
         $("#scan_countdown").text("");
     } else {
         $("#scan_box").removeClass("scan-running");
-        $("#scannowbtn").prop("disabled", false).text("▶ Scan Now");   
+        $("#scannowbtn").prop("disabled", false).text("6-Chamber Single Shot");
+        $("#btn-scan-circular").prop("disabled", false).text("▶ Circular Scan Well");
     }
+});
+
+// =========================
+// STAGE NAVIGATION & BOOKMARKS UI
+// =========================
+var currentJogStep = 250;
+var WELL_GRID_ORDER = [
+    "top_left", "top_middle", "top_right",
+    "bottom_left", "bottom_middle", "bottom_right"
+];
+
+function formatSigned(val) {
+    var n = parseInt(val || 0, 10);
+    return (n >= 0 ? "+" : "") + n;
+}
+
+function updateNavUI(state) {
+    if (!state) return;
+    if (state.current_position) {
+        $("#nav-pos-x").text(formatSigned(state.current_position.x));
+        $("#nav-pos-y").text(formatSigned(state.current_position.y));
+        $("#nav-pos-z").text(formatSigned(state.current_position.z));
+    }
+    $("#nav-uncertain-badge").toggle(!!state.position_uncertain);
+
+    if (state.soft_limits) {
+        $("#nav-lim-x").text(state.soft_limits.min_x + ", " + state.soft_limits.max_x);
+        $("#nav-lim-y").text(state.soft_limits.min_y + ", " + state.soft_limits.max_y);
+    }
+    if (state.geometry && !$("#scan-geom-r").is(":focus") && !$("#scan-geom-sx").is(":focus") && !$("#scan-geom-sy").is(":focus")) {
+        $("#scan-geom-r").val(state.geometry.well_radius_steps);
+        $("#scan-geom-sx").val(state.geometry.step_x);
+        $("#scan-geom-sy").val(state.geometry.step_y);
+    }
+    if (state.bookmarks) {
+        var grid = $("#nav-bookmark-grid");
+        grid.empty();
+        var keys = WELL_GRID_ORDER.slice();
+        Object.keys(state.bookmarks).forEach(function(k) {
+            if (keys.indexOf(k) === -1) keys.push(k);
+        });
+        keys.forEach(function(name) {
+            if (!(name in state.bookmarks)) return;
+            var coords = state.bookmarks[name];
+            var isCurrent = state.current_position &&
+                state.current_position.x === coords[0] &&
+                state.current_position.y === coords[1];
+            var borderCol = isCurrent ? "#2e7d32" : "#c5e1a5";
+            var bgCol     = isCurrent ? "#e8f5e9" : "#ffffff";
+            var card = $(
+                '<div style="border:1px solid ' + borderCol + '; background:' + bgCol + '; border-radius:6px; padding:6px 8px; font-size:12px;">' +
+                    '<div style="font-weight:bold; color:#1b5e20; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + name + '</div>' +
+                    '<div style="font-family:monospace; font-size:11px; color:#555; margin-bottom:4px;">(' + coords[0] + ', ' + coords[1] + ')</div>' +
+                    '<div style="display:flex; gap:3px;">' +
+                        '<button type="button" class="bm-go-btn" data-name="' + name + '" style="flex:1; padding:2px 0; border:none; border-radius:3px; background:#1565C0; color:#fff; cursor:pointer; font-size:11px;" title="Move stage to ' + name + '">Go</button>' +
+                        '<button type="button" class="bm-sync-btn" data-name="' + name + '" style="flex:1; padding:2px 0; border:1px solid #ef6c00; border-radius:3px; background:#fff3e0; color:#e65100; cursor:pointer; font-size:11px;" title="Override software coordinates to ' + name + ' without moving motors">Sync</button>' +
+                        '<button type="button" class="bm-set-btn" data-name="' + name + '" style="flex:1; padding:2px 0; border:1px solid #888; border-radius:3px; background:#f5f5f5; color:#333; cursor:pointer; font-size:11px;" title="Overwrite ' + name + ' with current (X,Y)">Set</button>' +
+                    '</div>' +
+                '</div>'
+            );
+            grid.append(card);
+        });
+    }
+}
+
+socket.on('nav_state', function(state) {
+    updateNavUI(state);
+});
+
+socket.on('scan_verify_prompt', function(info) {
+    $("#scan-verify-text").text(
+        "Scan of '" + info.well + "' complete (" + info.tiles_captured + "/" + info.tiles_total +
+        " tiles). Returned to (0, 0) landmark — is the landmark centered?"
+    );
+    $("#scan-verify-banner").slideDown(150);
+});
+
+$(document).on("click", ".nav-step-btn", function() {
+    currentJogStep = parseInt($(this).data("steps"), 10) || 250;
+    $(".nav-step-btn").css({ background: "#fff", color: "#000", borderColor: "#888" });
+    $(this).css({ background: "#1565C0", color: "#fff", borderColor: "#1565C0" });
+});
+
+$("#btn-nav-zero").click(function() {
+    $.post("/nav/zero", function(state) {
+        updateNavUI(state);
+        $("#scan-verify-banner").slideUp(150);
+    });
+});
+
+$(document).on("click", ".bm-go-btn", function() {
+    var name = $(this).data("name");
+    $.ajax({
+        url: "/nav/goto",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ name: name })
+    });
+});
+
+$(document).on("click", ".bm-sync-btn", function() {
+    var name = $(this).data("name");
+    $.ajax({
+        url: "/nav/reset_to",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ name: name }),
+        success: function(state) { updateNavUI(state); }
+    });
+});
+
+$(document).on("click", ".bm-set-btn", function() {
+    var name = $(this).data("name");
+    if (!confirm("Overwrite bookmark '" + name + "' with current stage position?")) return;
+    $.ajax({
+        url: "/nav/mark",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ name: name }),
+        success: function(state) { updateNavUI(state); }
+    });
+});
+
+$("#btn-nav-goto-xy").click(function() {
+    var tx = parseInt($("#nav-goto-x").val(), 10) || 0;
+    var ty = parseInt($("#nav-goto-y").val(), 10) || 0;
+    $.ajax({
+        url: "/nav/goto",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ x: tx, y: ty })
+    });
+});
+
+$("#btn-scan-circular").click(function() {
+    var well = $("#scan-well-select").val() || "bottom_middle";
+    var r    = parseInt($("#scan-geom-r").val(), 10)  || 1500;
+    var sx   = parseInt($("#scan-geom-sx").val(), 10) || 500;
+    var sy   = parseInt($("#scan-geom-sy").val(), 10) || 500;
+    $("#scan-verify-banner").hide();
+    $.ajax({
+        url: "/nav/scan_well",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ well: well, radius: r, step_x: sx, step_y: sy }),
+        error: function(xhr) {
+            var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : "Could not start scan";
+            alert(msg);
+        }
+    });
+});
+
+$("#btn-verify-yes").click(function() {
+    $.post("/nav/verify_landmark", { centered: "true" });
+    $("#scan-verify-banner").slideUp(150);
+});
+
+$("#btn-verify-no").click(function() {
+    $.post("/nav/verify_landmark", { centered: "false" });
+    $("#scan-verify-banner").slideUp(150);
 });
 
 
@@ -819,7 +1100,11 @@ $("#scan-unlock-btn").click(function() {
 
 function moveParams(isRepeat) {
     var params = {};
-    if (isRepeat)     params.repeat   = 1;
+    if (isRepeat) {
+        params.repeat = 1;
+    } else {
+        params.steps = currentJogStep;
+    }
     if (scanOverride) params.override = 1;
     return params;
 }
@@ -1347,6 +1632,13 @@ socket.on('connect', function() {
 
 window.onload = function() {
     $.getJSON({ type:"GET", url:'/get_system_parameters_from_html' });
+    $.getJSON('/nav/state', function(state) { updateNavUI(state); });
+    $.getJSON('/recent_logs', function(res) {
+        if (res && res.logs) {
+            $("#action-log").empty();
+            res.logs.forEach(function(item) { appendLogRow(item, false); });
+        }
+    });
     $.getJSON('/scan_status', function(data) { setScanRunning(!!data.running); });
     $.getJSON('/hardware_status', function(data) {
         updateHardwareBanner(data.disconnected);

@@ -29,8 +29,21 @@ from pathlib import Path
 
 from config import BASE_DIR, STEP_DELAY
 from hardware import stepper_motors
+from services.telemetry import emit_socket_event, log_event
 
 DEFAULT_STATE_PATH = BASE_DIR / "state" / "stage_position.json"
+_navigator_instance: "StageNavigator | None" = None
+_navigator_lock = threading.Lock()
+
+
+def get_navigator() -> "StageNavigator":
+    """Return the shared process-wide StageNavigator singleton."""
+    global _navigator_instance
+    if _navigator_instance is None:
+        with _navigator_lock:
+            if _navigator_instance is None:
+                _navigator_instance = StageNavigator()
+    return _navigator_instance
 
 
 class StageNavigator:
@@ -109,6 +122,19 @@ class StageNavigator:
             print(f"[NAV WARNING] Failed to read {self.state_path} ({e}); using defaults.")
             self.save_state()
 
+    def get_public_state(self) -> dict:
+        """Return a shallow serializable copy of the current stage state."""
+        with self._lock:
+            return {
+                "updated_at": self.state["updated_at"],
+                "in_motion": self.state["in_motion"],
+                "position_uncertain": self.state["position_uncertain"],
+                "current_position": dict(self.state["current_position"]),
+                "soft_limits": dict(self.state["soft_limits"]),
+                "bookmarks": {k: list(v) for k, v in self.state["bookmarks"].items()},
+                "geometry": dict(self.state["geometry"]),
+            }
+
     def save_state(self) -> None:
         """Atomically persist stage state to disk via a temporary file and os.replace."""
         with self._lock:
@@ -120,6 +146,8 @@ class StageNavigator:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_path, self.state_path)
+            payload = self.get_public_state()
+        emit_socket_event("nav_state", payload)
 
     # ── Properties & Configuration ────────────────────────────
     @property
@@ -303,6 +331,7 @@ class StageNavigator:
                 f"  [NAV CLAMP] Requested ({target_x}, {target_y}) clamped to "
                 f"soft limits ({cx}, {cy})"
             )
+            log_event(f"NAV_CLAMP            Target ({target_x}, {target_y}) clamped -> (X={cx:+d}, Y={cy:+d})")
 
         dx = cx - self.pos["x"]
         dy = cy - self.pos["y"]

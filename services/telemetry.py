@@ -69,6 +69,27 @@ def log_event(action: str, latency_us: int | None = None) -> None:
     )
 
 
+def get_recent_logs(limit: int = 50) -> list[dict]:
+    """Return the most recent `limit` log entries from logs/actions.csv (newest first)."""
+    if not os.path.exists(LOG_FILE):
+        return []
+    rows: list[dict] = []
+    try:
+        with open(LOG_FILE, "r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                lat_raw = row.get("latency_us", "")
+                rows.append({
+                    "timestamp": row.get("timestamp", ""),
+                    "action": row.get("action", ""),
+                    "latency_us": int(lat_raw) if str(lat_raw).isdigit() else None,
+                })
+    except Exception as e:
+        print(f"[TELEMETRY] CSV read error: {e}")
+        return []
+    return list(reversed(rows[-limit:]))
+
+
 class Timer:
     """
     Context manager that wraps a block of code and logs its duration in microseconds.

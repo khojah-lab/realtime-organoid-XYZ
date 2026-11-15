@@ -11,7 +11,8 @@ from hardware import get_disconnected_hardware
 from hardware.camera import generate_mjpeg_frames, get_camera_status
 from hardware.gpio_control import toggle_led
 from services.scanner import get_scan_status
-from services.telemetry import emit_socket_event, log_event
+from services.stage_navigator import get_navigator
+from services.telemetry import emit_socket_event, get_recent_logs, log_event
 
 main_bp = Blueprint("main", __name__)
 
@@ -61,13 +62,20 @@ def hardware_status():
     })
 
 
+@main_bp.route("/recent_logs")
+def recent_logs():
+    """Return the most recent action log entries for UI hydration."""
+    return jsonify({"logs": get_recent_logs(50)})
+
+
 @main_bp.route("/system_parameters")
 @main_bp.route("/get_system_parameters_from_html")
 def get_system_parameters():
-    """Push current system parameters, scan status, and hardware status over Socket.IO."""
+    """Push current system parameters, scan status, stage navigation, and hardware status over Socket.IO."""
     emit_socket_event("system_parameters", {"data": system_params})
     emit_socket_event("system_parameters_to_html", {"data": {"data": system_params}})
     emit_socket_event("scan_status", get_scan_status())
+    emit_socket_event("nav_state", get_navigator().get_public_state())
     emit_socket_event(
         "hardware_status",
         {
