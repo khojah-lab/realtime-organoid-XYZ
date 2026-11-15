@@ -1,0 +1,18 @@
+[Unit]
+Description=XYZ independent aws upload service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=khojahlab
+WorkingDirectory=/home/khojahlab/SpringXYZ
+EnvironmentFile=-/etc/xyz-storage.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/khojahlab/SpringXYZ/venv/bin/python -u dev/aws_upload_worker.py
+Restart=on-failure
+RestartSec=15
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

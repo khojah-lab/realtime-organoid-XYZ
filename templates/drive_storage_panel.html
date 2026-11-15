@@ -1,0 +1,84 @@
+<section id="storage-panel" aria-labelledby="storage-title">
+<style>
+#storage-panel{font:15px/1.5 system-ui,sans-serif;background:#f5f8fc;border:1px solid #dbe4ee;border-radius:14px;padding:24px;margin:24px 0;color:#172b42}
+#storage-panel h2{margin:0 0 6px} #storage-panel button,#storage-panel select{padding:10px 15px;border:1px solid #adbed0;border-radius:7px;background:white;color:#172b42;cursor:pointer}
+#storage-panel button:disabled{opacity:.5;cursor:wait} #storage-panel .primary{background:#1260b0;color:white}
+#storage-panel .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0}
+#storage-panel .card{background:white;border:1px solid #dbe4ee;border-radius:10px;padding:16px}
+#storage-panel .muted{color:#53677c} #storage-panel .warning{color:#9b3018;white-space:pre-wrap}
+#storage-panel pre{white-space:pre-wrap;font:inherit} #storage-panel summary{cursor:pointer;padding:12px 0}
+#storage-panel progress{width:100%} #storage-panel table{width:100%;text-align:left} #storage-panel td{padding:4px}
+</style>
+<h2 id="storage-title">Image storage</h2>
+<p class="muted">Choose where the next complete scan is backed up. A scan already in progress keeps its original choice.</p>
+<label for="storage-mode">Next scans</label>
+<select id="storage-mode"><option value="aws">AWS only</option><option value="drive">Google Drive only</option><option value="both">AWS + Google Drive</option></select>
+<button class="primary" id="storage-save">Validate &amp; apply</button>
+<p id="storage-message" role="status" aria-live="polite"></p>
+<p id="storage-current"></p>
+<div class="cards">
+<div class="card"><strong>Pi local storage</strong><p id="storage-disk">Loading…</p><progress id="storage-meter" max="100"></progress><table id="storage-directories"></table></div>
+<div class="card"><strong>AWS S3</strong><pre id="storage-aws"></pre></div>
+<div class="card"><strong>Google Drive</strong><pre id="storage-drive"></pre></div>
+</div>
+<p id="storage-errors" class="warning" role="alert"></p>
+<div class="card"><strong>Original retention: 7 days</strong><p>Originals and thumbnails are deleted only after 7 days AND all required backups have been verified. Failed uploads keep their local files. Older, unregistered originals are preserved.</p><p id="storage-originals"></p></div>
+<details><summary>Advanced: pause transfers</summary>
+<p>Pausing keeps accepting copies for selected destinations. Pending files use Pi disk space. In-flight transfers may finish.</p>
+<button id="storage-pause-aws">Pause AWS</button> <button id="storage-pause-drive">Pause Drive</button>
+</details>
+<details><summary>Advanced: retire a destination for historical pending photos</summary>
+<p>Only completed scans with a verified backup at the other destination qualify. This cancels the missing backup requirement; it does not change future scans or delete cloud files. Eligible originals are still retained for 7 days.</p>
+<select id="storage-retire"><option value="aws">Retire pending AWS requirement</option><option value="drive">Retire pending Drive requirement</option></select>
+<button id="storage-preview">Preview affected photos</button>
+<pre id="storage-preview-text"></pre>
+<button id="storage-confirm" disabled>Confirm historical change</button>
+</details>
+<p class="muted">Cloud usage is refreshed hourly. AWS usage counts current objects, excluding old versions; it is not a billing total. Drive quota is account-wide. Missing permissions are shown as unavailable.</p>
+</section>
+<script>
+(()=>{
+let csrf='', busy=false, state=null, preview=null;
+const el=id=>document.getElementById('storage-'+id);
+const bytes=n=>n==null?'Unavailable':n>=1073741824?(n/1073741824).toFixed(2)+' GB':(n/1048576).toFixed(2)+' MB';
+const label={aws:'AWS only',drive:'Drive only',both:'AWS + Drive'};
+async function action(body){
+ if(busy||!csrf)throw Error('Wait for the current operation');
+ busy=true;el('save').disabled=true;
+ try{
+  const response=await fetch('/drive-storage/control',{method:'POST',headers:{'Content-Type':'application/json','X-Drive-CSRF':csrf},body:JSON.stringify(body)});
+  const result=await response.json();if(!response.ok)throw Error(result.error||'Operation failed');
+  return result;
+ }finally{busy=false;el('save').disabled=false;}
+}
+async function refresh(){
+ try{
+  const response=await fetch('/drive-storage/status',{cache:'no-store'});
+  if(!response.ok)throw Error('Storage status unavailable');
+  const s=await response.json();const first=!state;state=s;csrf=s.csrf;
+  if(first)el('mode').value=s.mode;
+  el('current').textContent='Applied to next scans: '+label[s.mode]+(s.last_scan?' · Latest scan: '+label[s.last_scan.mode]+' ('+new Date(s.last_scan.started*1000).toLocaleString()+')':'');
+  el('disk').textContent=bytes(s.disk.free)+' free of '+bytes(s.disk.total);
+  el('meter').value=100*s.disk.used/s.disk.total;
+  const names={original:'Originals',thumbnails:'Thumbnails',aws:'AWS copies',drive:'Drive copies',legacy_aws:'Earlier AWS queue',legacy_drive:'Earlier Drive queue'};
+  el('directories').replaceChildren();
+  Object.entries(s.directories).forEach(([k,v])=>{const tr=document.createElement('tr');[names[k],bytes(v)].forEach(t=>{const td=document.createElement('td');td.textContent=t;tr.append(td)});el('directories').append(tr)});
+  ['aws','drive'].forEach(p=>{
+   const w=s.providers[p],q=w.capacity;
+   let text=(w.alive?'Worker reporting':'Worker not reporting — check service')+'\n'+(w.paused?'Uploads paused':'Uploads active')+'\nPending: '+w.pending+' · Verified: '+w.verified+' · Copies cleaned: '+w.cleaned;
+   text+='\nCloud: '+(!q?'Waiting for usage refresh':q.error?'Unavailable: '+q.error:bytes(q.used)+' used'+(q.limit!=null?' / '+bytes(q.limit)+' total · '+bytes(Math.max(0,q.limit-q.used))+' free':''));
+   if(q)text+='\nUsage checked: '+new Date(q.at*1000).toLocaleString();
+   el(p).textContent=text;el('pause-'+p).textContent=(w.paused?'Resume ':'Pause ')+(p==='aws'?'AWS':'Drive');
+  });
+  el('errors').textContent=(s.disk.critical?'DISK CRITICAL: new scans blocked; uploads continue.\n':s.disk.low?'Low disk space. Resolve pending uploads.\n':'')+s.errors.map(e=>e.provider+' · '+e.name+': '+e.error).join('\n');
+  el('originals').textContent='Managed originals: '+s.originals.total+' · Cleaned: '+s.originals.cleaned+' · Older than 7 days still retained: '+s.originals.older_than_week;
+ }catch(e){el('errors').textContent=e.message;}
+}
+el('save').onclick=async()=>{el('message').textContent='Checking account and destination…';try{await action({mode:el('mode').value});el('message').textContent='Saved for the next scan. Current scan unchanged.';}catch(e){el('message').textContent=e.message}await refresh()};
+['aws','drive'].forEach(p=>el('pause-'+p).onclick=async()=>{try{await action({pause:{provider:p,paused:!state.providers[p].paused}})}catch(e){el('message').textContent=e.message}await refresh()});
+el('preview').onclick=async()=>{try{preview=await action({preview:el('retire').value});el('preview-text').textContent=preview.count+' photos · '+bytes(preview.bytes)+' originals affected\n'+preview.names.join('\n');el('confirm').disabled=!preview.count}catch(e){el('message').textContent=e.message}};
+el('retire').onchange=()=>{preview=null;el('confirm').disabled=true;el('preview-text').textContent=''};
+el('confirm').onclick=async()=>{if(!preview||!confirm('Cancel '+preview.provider+' backup requirement for these '+preview.count+' photos? Other verified backups are retained.'))return;try{await action({waive:{provider:preview.provider,token:preview.token}});el('preview-text').textContent='Historical requirements updated.';preview=null;el('confirm').disabled=true}catch(e){el('message').textContent=e.message}await refresh()};
+refresh();setInterval(refresh,15000);
+})();
+</script>
