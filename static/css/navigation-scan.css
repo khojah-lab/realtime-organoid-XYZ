@@ -166,6 +166,19 @@
     font-size: 12px;
 }
 
+#btn-nav-stop {
+    padding: 5px 10px;
+    border: 1px solid #a62626;
+    border-radius: 4px;
+    color: #952020;
+    background: white;
+    cursor: pointer;
+}
+
+#btn-nav-stop:hover {
+    background: #ffeded;
+}
+
 #btn-nav-goto-xy:hover {
     background: #0d47a1;
 }

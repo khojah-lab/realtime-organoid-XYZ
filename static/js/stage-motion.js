@@ -82,6 +82,7 @@ $("#btn-nav-zero").click(function() {
 });
 
 $(document).on("click", ".bm-go-btn", function() {
+    $("#nav-stop-status").text("");
     var name = $(this).data("name");
     $.ajax({
         url: "/nav/goto",
@@ -114,7 +115,18 @@ $(document).on("click", ".bm-set-btn", function() {
     });
 });
 
+$("#btn-nav-stop").click(function() {
+    var status = $("#nav-stop-status").text("Stopping...");
+    $.post("/nav/stop").done(function(result) {
+        var messages = {idle: "No active Go move.", stopped: "Move stopped.", stopping: "Stop requested."};
+        status.text(messages[result.status]);
+    }).fail(function() {
+        status.text("Stop unconfirmed. Retry.");
+    });
+});
+
 $("#btn-nav-goto-xy").click(function() {
+    $("#nav-stop-status").text("");
     var tx = parseInt($("#nav-goto-x").val(), 10) || 0;
     var ty = parseInt($("#nav-goto-y").val(), 10) || 0;
     $.ajax({

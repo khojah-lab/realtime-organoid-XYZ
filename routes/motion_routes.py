@@ -34,6 +34,16 @@ motion_bp = Blueprint("motion", __name__)
 # threads would step the same motor at once).
 axis_locks = {"x": threading.Lock(), "y": threading.Lock(), "z": threading.Lock()}
 nav_move_lock = threading.Lock()
+active_goto = None  # (cancel, finished) events for the current navigation command
+
+
+def cancel_goto():
+    with nav_move_lock:
+        if active_goto is not None:
+            cancel, finished = active_goto
+            cancel.set()
+            return finished
+    return None
 
 MOVE_DIRECTIONS = {"up", "down", "left", "right", "forward", "backward"}
 
@@ -140,6 +150,8 @@ def move_hold_end():
 
 @motion_bp.route("/stop")
 def stop():
+    if cancel_goto() is not None:
+        return "OK"
     release_all()
     pos = get_navigator().pos
     log_event(f"STOP_STEPPERS        Coils released @ (X={pos['x']:+d}, Y={pos['y']:+d}, Z={pos['z']:+d})")
@@ -226,6 +238,14 @@ def nav_config():
     return jsonify(nav.get_public_state())
 
 
+@motion_bp.route("/nav/stop", methods=["POST"])
+def nav_stop():
+    finished = cancel_goto()
+    if finished is None:
+        return jsonify(status="idle")
+    return jsonify(status="stopped" if finished.wait(timeout=2) else "stopping")
+
+
 @motion_bp.route("/nav/goto", methods=["POST"])
 def nav_goto():
     """Move stage to a named bookmark or explicit (x, y) coordinates in a background thread."""
@@ -250,22 +270,37 @@ def nav_goto():
         except (KeyError, ValueError, TypeError):
             return jsonify({"error": "Provide bookmark 'name' or integer 'x' and 'y'"}), 400
 
-    if not nav_move_lock.acquire(blocking=False):
-        return jsonify({"error": "Stage is already moving"}), 409
+    global active_goto
+    cancel = threading.Event()
+    finished = threading.Event()
+    with nav_move_lock:
+        if active_goto is not None:
+            return jsonify({"error": "Stage is already moving"}), 409
+        active_goto = (cancel, finished)
 
     def run_goto():
+        global active_goto
         t0 = time.perf_counter()
         try:
-            pos = nav.move_to(tx, ty)
+            pos = nav.move_to(tx, ty, cancel=cancel)
+            event = "NAV_GOTO_STOPPED" if cancel.is_set() else "NAV_GOTO"
             elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
             log_event(
-                f"NAV_GOTO             {label} -> (X={pos['x']:+d}, Y={pos['y']:+d})",
+                f"{event:<21}{label} -> (X={pos['x']:+d}, Y={pos['y']:+d})",
                 latency_us=elapsed_us,
             )
         finally:
-            nav_move_lock.release()
+            with nav_move_lock:
+                finished.set()
+                active_goto = None
 
-    threading.Thread(target=run_goto, daemon=True).start()
+    try:
+        threading.Thread(target=run_goto, daemon=True).start()
+    except RuntimeError:
+        with nav_move_lock:
+            finished.set()
+            active_goto = None
+        raise
     return jsonify({"status": "moving", "target": [tx, ty], "label": label})
 
 

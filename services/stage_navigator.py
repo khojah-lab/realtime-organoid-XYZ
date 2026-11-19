@@ -241,12 +241,12 @@ class StageNavigator:
         was_clamped = (cx != int(target_x)) or (cy != int(target_y))
         return cx, cy, was_clamped
 
-    def _step_axis(self, axis: str, signed_steps: int) -> int:
+    def _step_axis(self, axis: str, signed_steps: int, cancel: threading.Event | None = None) -> int:
         """
         Step a single axis ('x', 'y', or 'z') by `signed_steps`, updating
         `current_position` after every step and flushing state in `finally`.
         """
-        if signed_steps == 0:
+        if signed_steps == 0 or (cancel and cancel.is_set()):
             return 0
 
         axis = axis.lower()
@@ -297,7 +297,7 @@ class StageNavigator:
 
             resolved_dir = stepper_motors.resolve_stepper_direction(direction_str)
             for _ in range(steps):
-                if interrupted:
+                if interrupted or (cancel and cancel.is_set()):
                     break
                 for m in motors:
                     m.onestep(direction=resolved_dir, style=stepper.SINGLE)
@@ -323,6 +323,7 @@ class StageNavigator:
         target_x: int,
         target_y: int,
         target_z: int | None = None,
+        *, cancel: threading.Event | None = None,
     ) -> dict[str, int]:
         """Move to (target_x, target_y[, target_z]) with soft-limit clamping on XY."""
         cx, cy, clamped = self.clamp_xy(target_x, target_y)
@@ -338,11 +339,11 @@ class StageNavigator:
         dz = (int(target_z) - self.pos["z"]) if target_z is not None else 0
 
         if dx != 0:
-            self._step_axis("x", dx)
+            self._step_axis("x", dx, cancel)
         if dy != 0:
-            self._step_axis("y", dy)
+            self._step_axis("y", dy, cancel)
         if dz != 0:
-            self._step_axis("z", dz)
+            self._step_axis("z", dz, cancel)
 
         return dict(self.pos)
 
