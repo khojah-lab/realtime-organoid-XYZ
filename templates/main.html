@@ -314,11 +314,15 @@
                         </label>
                         <small id="schedule-well-note" hidden>Uses the well, R, ΔX and ΔY selected above when you confirm.</small>
                         <div class="scan-schedule-fields">
+                            <label>Start date <input required type="date" name="start_date"></label>
+                            <label>End date (optional) <input type="date" name="end_date"></label>
+                        </div>
+                        <div class="scan-schedule-fields">
                             <label>Start time <input required type="time" name="start"></label>
                             <label>End time <input required type="time" name="end"></label>
                             <label>Interval (min) <input required type="number" name="interval" min="1" max="1440" step="1"></label>
                         </div>
-                        <small>Daily · Los Angeles time</small>
+                        <small>Los Angeles time. Leave the end date empty to repeat indefinitely.</small>
                         <button type="submit">Confirm and start automatic scans</button>
                     </fieldset>
                 </form>

@@ -138,9 +138,19 @@ function showModeNote() {
     $("#schedule-well-note").prop("hidden", scheduleFields.mode.value !== "circular");
 }
 
+function displayScheduleDate(iso) {
+    return iso.split("-").reverse().join("/");
+}
+
 function renderSchedule(settings) {
     savedSchedule = settings;
     scheduleFields.mode.value = settings.mode || "six_chamber";
+    var today = new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit"
+    }).format(new Date());
+    scheduleFields.start_date.value = settings.start_date || today;
+    scheduleFields.end_date.value = settings.end_date || "";
+    scheduleFields.end_date.min = scheduleFields.start_date.value;
     scheduleFields.start.value = settings.start;
     scheduleFields.end.value = settings.end;
     scheduleFields.interval.value = settings.interval;
@@ -153,8 +163,10 @@ function renderSchedule(settings) {
             ? "Circular Scan Well (" + settings.circular.well + ")"
             : "6-Chamber Single Shot";
         var overnight = settings.end < settings.start ? " the next day" : "";
+        var dates = settings.start_date ? " From " + displayScheduleDate(settings.start_date) : "";
+        if (settings.end_date) dates += " through " + displayScheduleDate(settings.end_date) + " inclusive";
         $("#schedule-summary").text(mode + " runs every " + settings.interval + " min, daily from " +
-            settings.start + " to " + settings.end + overnight + " (Los Angeles time).");
+            settings.start + " to " + settings.end + overnight + " (Los Angeles time)." + (dates ? dates + "." : ""));
     }
     scheduleFeedback.text(settings.enabled ? "" : "Automatic scanning is off.");
 }
@@ -169,6 +181,9 @@ function submitSchedule(settings) {
 }
 
 socket.on("scan_schedule", renderSchedule);
+$(scheduleFields.start_date).on("input", function() {
+    scheduleFields.end_date.min = this.value;
+});
 $(scheduleFields.mode).on("change", showModeNote);
 $.getJSON("/scan_schedule", renderSchedule).fail(function() {
     scheduleFeedback.text("Could not load automatic scan settings. Refresh to retry.");
@@ -177,6 +192,8 @@ $(scheduleForm).on("submit", function(event) {
     event.preventDefault();
     var settings = {enabled: true, mode: scheduleFields.mode.value, start: scheduleFields.start.value,
         end: scheduleFields.end.value, interval: scheduleFields.interval.valueAsNumber};
+    settings.start_date = scheduleFields.start_date.value;
+    settings.end_date = scheduleFields.end_date.value;
     if (settings.mode === "circular") {
         settings.circular = {well: $("#scan-well-select").val(),
             radius: document.getElementById("scan-geom-r").valueAsNumber,

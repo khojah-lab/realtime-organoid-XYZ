@@ -334,7 +334,9 @@
 .log-scan  { color: #4dd0e1; }
 
 .scan-schedule { margin-top: 12px; border-top: 1px solid #ccd6e0; padding-top: 8px; }
-.scan-schedule h3 { margin: 0 0 8px; font-size: 1rem; }
+#schedule-title { margin: 4px 0 14px; font-size: 22px; line-height: 1.25; font-weight: 700; }
+.scan-schedule-fields label { display: grid; gap: 3px; font-size: 14px; }
+.scan-schedule-fields input { padding: 4px 7px; font: inherit; }
 .scan-schedule [hidden] { display: none; }
 #schedule-summary { margin: 4px 0 8px; }
 .scan-schedule fieldset { margin: 8px 0; padding: 8px 0; border: 0; }

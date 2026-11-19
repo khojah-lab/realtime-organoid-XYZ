@@ -336,6 +336,15 @@ def validate_schedule(data):
     if type(minutes) is not int or not 1 <= minutes <= 1440:
         raise ValueError("Interval must be a whole number from 1 to 1440 minutes.")
     settings = {key: data[key] for key in ("enabled", "start", "end", "interval")}
+    for key in ("start_date", "end_date"):
+        value = data.get(key)
+        if value not in (None, ""):
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+                raise ValueError("Choose a valid calendar date.")
+            datetime.date.fromisoformat(value)
+            settings[key] = value
+    if settings.get("end_date") and settings.get("start_date", "") > settings["end_date"]:
+        raise ValueError("End date must be on or after the start date.")
     mode = data.get("mode", "six_chamber")
     if mode not in ("six_chamber", "circular"):
         raise ValueError("Select a scan mode.")
@@ -359,6 +368,8 @@ def get_schedule():
 def save_schedule(data):
     global _schedule
     settings = validate_schedule(data)
+    if settings["enabled"] and settings.get("end_date") and next_scan_time(settings, datetime.datetime.now(LA_TZ)) is None:
+        raise ValueError("No scan start remains within the selected dates and times.")
     with _schedule_changed:
         _schedule_file.parent.mkdir(parents=True, exist_ok=True)
         temp = _schedule_file.with_suffix(".tmp")
@@ -381,15 +392,26 @@ def next_scan_time(settings, now):
     span = (minutes(settings["end"]) - start) % 1440
     # Walk real minutes so nonexistent spring-forward times are skipped.
     candidate = now.astimezone(datetime.timezone.utc).replace(second=0, microsecond=0)
+    first = datetime.date.fromisoformat(settings["start_date"]) if settings.get("start_date") else None
+    last = datetime.date.fromisoformat(settings["end_date"]) if settings.get("end_date") else None
+    if first and now.astimezone(LA_TZ).date() < first:
+        midnight = LA_TZ.localize(datetime.datetime.combine(first, datetime.time.min))
+        candidate = midnight.astimezone(datetime.timezone.utc) - datetime.timedelta(minutes=1)
     while True:
         candidate += datetime.timedelta(minutes=1)
         local = candidate.astimezone(LA_TZ)
-        offset = (local.hour * 60 + local.minute - start) % 1440
+        if last and local.date() > last:
+            return None
+        minute = local.hour * 60 + local.minute
+        if first and local.date() == first and minute < start:
+            continue
+        offset = (minute - start) % 1440
         if offset <= span and offset % settings["interval"] == 0:
             return local
 
 
 def _scan_scheduler_loop():
+    global _schedule
     while True:
         with _schedule_changed:
             now = datetime.datetime.now(LA_TZ)
@@ -398,6 +420,10 @@ def _scan_scheduler_loop():
             scan_status["next_scan_iso"] = due.isoformat() if due else None
             emit_socket_event("scan_status", dict(scan_status))
             if due is None:
+                if _schedule["enabled"]:
+                    # The final eligible slot has passed. Also applies after a restart.
+                    _schedule = dict(_schedule, enabled=False)
+                    emit_socket_event("scan_schedule", dict(_schedule))
                 _schedule_changed.wait()
                 continue
             if _schedule_changed.wait(timeout=max(0, due.timestamp() - time.time())):
