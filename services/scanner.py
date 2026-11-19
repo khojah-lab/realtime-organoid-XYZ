@@ -18,12 +18,10 @@ from config import (
     LA_TZ,
     CAPTURE_JPEG_QUALITY,
     CHAMBER_NAMES,
-    CHAMBER_MOVEMENTS,
-    RETURN_HOME_MOVEMENTS,
 )
 from hardware.camera import capture_fresh_bgr_frame
 from hardware.gpio_control import set_led
-from hardware.stepper_motors import move_platform
+from services.stage_navigator import get_navigator
 from services import storage_manager
 from services.telemetry import Timer, emit_socket_event, log_event
 
@@ -106,11 +104,29 @@ def run_scan() -> None:
             if sid:
                 storage_manager.finish_scan(sid)
         finally:
-            finish_scan_status(cancel, "Scan stopped. Align the stage to bottom right before the next six-chamber scan.")
+            finish_scan_status(cancel, "Six-chamber scan stopped.")
 
 
 def _run_scan(drive_session, cancel) -> None:
     """Execute a full 6-chamber automated scan while keeping the camera stream active."""
+    nav = get_navigator()
+    if nav.state["position_uncertain"]:
+        raise ValueError("Stage position uncertain. Align to a known well and Sync before scanning.")
+    # Capture filenames use "center"; navigation bookmarks use "middle".
+    targets = {name: tuple(nav.bookmarks[name.replace("_center", "_middle")])
+               for name in CHAMBER_NAMES}
+
+    def move_to_chamber(name):
+        x, y = targets[name]
+        scan_status["current_step"] = f"Moving to {name} ({x}, {y})..."
+        emit_socket_event("scan_status", scan_status)
+        pos = nav.move_to(x, y, cancel=cancel)
+        if cancel.is_set():
+            return False
+        if (pos["x"], pos["y"]) != (x, y):
+            raise ValueError(f"Could not reach {name} at ({x}, {y}). Check the bookmark and stage limits.")
+        return not cancel.wait(1.0)
+
     log_event("SCAN_START")
     scan_status["running"]      = True
     scan_status["current_step"] = "Starting scan..."
@@ -130,16 +146,8 @@ def _run_scan(drive_session, cancel) -> None:
             print("=" * 45)
 
             for i, chamber in enumerate(CHAMBER_NAMES):
-                if cancel.is_set():
+                if cancel.is_set() or not move_to_chamber(chamber):
                     return
-                if CHAMBER_MOVEMENTS[i] is not None:
-                    axis, direction, steps = CHAMBER_MOVEMENTS[i]
-                    scan_status["current_step"] = f"Moving to {chamber}..."
-                    emit_socket_event("scan_status", scan_status)
-                    print(f"  Moving {axis.upper()} {direction} {steps} steps...")
-                    move_platform(axis, direction, steps, cancel=cancel)
-                    if cancel.wait(1.0):
-                        return
 
                 total = len(CHAMBER_NAMES)
                 scan_status["current_step"] = f"Capturing {chamber} ({i+1}/{total})..."
@@ -165,15 +173,8 @@ def _run_scan(drive_session, cancel) -> None:
             scan_status["current_step"] = "Returning to start..."
             emit_socket_event("scan_status", scan_status)
 
-            try:
-                for axis, direction, steps in RETURN_HOME_MOVEMENTS:
-                    print(f"  Moving {axis.upper()} {direction} {steps} steps...")
-                    move_platform(axis, direction, steps, cancel=cancel)
-                    if cancel.wait(1.0):
-                        return
-                print("  ✓ Returned to bottom_right\n")
-            except Exception as e:
-                print(f"  ✗ Return home error: {e}")
+            if move_to_chamber("bottom_right"):
+                print("  Returned to bottom_right")
 
         finally:
             set_led(False)
