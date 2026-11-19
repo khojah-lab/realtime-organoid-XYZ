@@ -29,10 +29,11 @@ function updateCountdown(nextScanStr) {
 }
 
 // Scan status updates
-socket.on('scan_status', function(msg) {
+function renderScanStatus(msg) {
+    $('#btn-stop-scan').prop('hidden', !msg.running).prop('disabled', !!msg.stopping);
     $("#scan_last").text(msg.last_scan    || "Never");
     $("#scan_next").text(msg.next_scan    || "—");
-    $("#scan_progress").text(msg.current_step || "");
+    $("#scan_progress").text(msg.stopping ? "Stopping scan..." : msg.current_step || "");
 
     if (msg.next_scan && msg.next_scan !== "Calculating..." && msg.next_scan !== "—") {
         updateCountdown(msg.next_scan);
@@ -48,6 +49,16 @@ socket.on('scan_status', function(msg) {
         $("#scannowbtn").prop("disabled", false).text("6-Chamber Single Shot");
         $("#btn-scan-circular").prop("disabled", false).text("▶ Circular Scan Well");
     }
+}
+
+socket.on('scan_status', renderScanStatus);
+
+$("#btn-stop-scan").click(function() {
+    $.post("/scan/stop").done(function() {
+        $.getJSON("/scan_status", renderScanStatus);
+    }).fail(function() {
+        $("#scan_progress").text("Stop unconfirmed. Please retry.");
+    });
 });
 
 // Circular boustrophedon scan trigger & post-scan landmark verification

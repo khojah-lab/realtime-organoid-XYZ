@@ -35,8 +35,37 @@ scan_status = {
     "current_step": "",
 }
 
+_active_cancel = None
 _scheduler_started = False
 _scan_lock = threading.Lock()
+
+
+def reserve_scan():
+    global _active_cancel
+    with _scan_lock:
+        if _active_cancel is not None:
+            return None
+        _active_cancel = threading.Event()
+        scan_status.update(running=True, stopping=False, current_step="Starting scan...")
+        return _active_cancel
+
+
+def request_scan_stop():
+    with _scan_lock:
+        if _active_cancel is not None:
+            _active_cancel.set()
+            scan_status["stopping"] = True
+        return dict(scan_status)
+
+
+def finish_scan_status(cancel, stopped_message):
+    global _active_cancel
+    with _scan_lock:
+        if cancel.is_set():
+            scan_status["current_step"] = stopped_message
+        scan_status.update(running=False, stopping=False)
+        _active_cancel = None
+        emit_socket_event("scan_status", dict(scan_status))
 
 
 def get_scan_status() -> dict:
@@ -61,12 +90,13 @@ def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
 
 
 def run_scan() -> None:
-    if not _scan_lock.acquire(blocking=False):
+    cancel = reserve_scan()
+    if cancel is None:
         return
     sid = None
     try:
         sid = storage_manager.begin_scan()
-        _run_scan(sid)
+        _run_scan(sid, cancel)
     except Exception as exc:
         scan_status["current_step"] = str(exc)
         emit_socket_event("scan_status", scan_status)
@@ -76,15 +106,11 @@ def run_scan() -> None:
             if sid:
                 storage_manager.finish_scan(sid)
         finally:
-            _scan_lock.release()
+            finish_scan_status(cancel, "Scan stopped. Align the stage to bottom right before the next six-chamber scan.")
 
 
-def _run_scan(drive_session) -> None:
+def _run_scan(drive_session, cancel) -> None:
     """Execute a full 6-chamber automated scan while keeping the camera stream active."""
-    if scan_status["running"]:
-        print("[SCAN] Already running, skipping.")
-        return
-
     log_event("SCAN_START")
     scan_status["running"]      = True
     scan_status["current_step"] = "Starting scan..."
@@ -104,18 +130,23 @@ def _run_scan(drive_session) -> None:
             print("=" * 45)
 
             for i, chamber in enumerate(CHAMBER_NAMES):
+                if cancel.is_set():
+                    return
                 if CHAMBER_MOVEMENTS[i] is not None:
                     axis, direction, steps = CHAMBER_MOVEMENTS[i]
                     scan_status["current_step"] = f"Moving to {chamber}..."
                     emit_socket_event("scan_status", scan_status)
                     print(f"  Moving {axis.upper()} {direction} {steps} steps...")
-                    move_platform(axis, direction, steps)
-                    time.sleep(1.0)
+                    move_platform(axis, direction, steps, cancel=cancel)
+                    if cancel.wait(1.0):
+                        return
 
                 total = len(CHAMBER_NAMES)
                 scan_status["current_step"] = f"Capturing {chamber} ({i+1}/{total})..."
                 emit_socket_event("scan_status", scan_status)
                 print(f"\n  Chamber {i+1}/{total}: {chamber}")
+                if cancel.is_set():
+                    return
                 fname = take_scan_photo(chamber, drive_session)
 
                 if fname:
@@ -137,8 +168,9 @@ def _run_scan(drive_session) -> None:
             try:
                 for axis, direction, steps in RETURN_HOME_MOVEMENTS:
                     print(f"  Moving {axis.upper()} {direction} {steps} steps...")
-                    move_platform(axis, direction, steps)
-                    time.sleep(1.0)
+                    move_platform(axis, direction, steps, cancel=cancel)
+                    if cancel.wait(1.0):
+                        return
                 print("  ✓ Returned to bottom_right\n")
             except Exception as e:
                 print(f"  ✗ Return home error: {e}")
@@ -149,13 +181,9 @@ def _run_scan(drive_session) -> None:
             print("  [LED] OFF after scan\n")
 
             now = datetime.datetime.now(LA_TZ)
-            scan_status["running"]      = False
-            scan_status["last_scan"]    = now.strftime("%Y-%m-%d %H:%M")
-            scan_status["current_step"] = ""
-            emit_socket_event("scan_status", scan_status)
-            print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
-
-
+            if not cancel.is_set():
+                scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
+                scan_status["current_step"] = ""
 
 
 def _scan_scheduler_loop() -> None:

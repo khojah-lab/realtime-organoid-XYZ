@@ -299,6 +299,7 @@
             <div class="scan-actions-row">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
                 <button class="scannowbutton secondary-scan-btn" id="scannowbtn" type="button">6-Chamber Single Shot</button>
+                <button id="btn-stop-scan" type="button" hidden>Stop scan</button>
             </div>
 
             <!-- Post-Scan (0, 0) Landmark Verification Prompt -->
@@ -310,6 +311,8 @@
                 <button type="button" id="btn-verify-no">⚠ Drift Detected — Jog &amp; Re-Zero</button>
             </div>
         </div>
+
+        {% include 'drive_storage_panel.html' %}
 
         <!-- ACTION LOG -->
         <div class="action-log-header">

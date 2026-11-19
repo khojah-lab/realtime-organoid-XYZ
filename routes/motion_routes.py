@@ -23,7 +23,8 @@ from hardware.dc_motors import (
 from hardware.gpio_control import set_led
 from hardware.stepper_motors import release_all
 from routes.main_routes import system_params
-from services.scanner import get_scan_status, scan_status, take_scan_photo
+from services.scanner import (get_scan_status, scan_status, take_scan_photo, reserve_scan,
+                              request_scan_stop, finish_scan_status)
 from services.stage_navigator import get_navigator
 from services.telemetry import emit_socket_event, log_event
 
@@ -304,6 +305,12 @@ def nav_goto():
     return jsonify({"status": "moving", "target": [tx, ty], "label": label})
 
 
+@motion_bp.route("/scan/stop", methods=["POST"])
+def stop_scan():
+    status = request_scan_stop()
+    return jsonify(status)
+
+
 @motion_bp.route("/nav/scan_well", methods=["POST"])
 def nav_scan_well():
     """
@@ -344,6 +351,10 @@ def nav_scan_well():
     if not tiles:
         return jsonify({"error": "No tiles fit within circle and soft limits"}), 400
 
+    cancel = reserve_scan()
+    if cancel is None:
+        return jsonify({"error": "A scan is already running"}), 409
+
     def run_circular_scan():
         t_start = time.perf_counter()
         scan_status["running"] = True
@@ -363,6 +374,8 @@ def nav_scan_well():
 
         try:
             for idx, tile in enumerate(tiles, 1):
+                if cancel.is_set():
+                    return
                 tx, ty = tile["x"], tile["y"]
                 r_idx, c_idx = tile["row"], tile["col"]
                 scan_status["current_step"] = (
@@ -371,9 +384,9 @@ def nav_scan_well():
                 emit_socket_event("scan_status", scan_status)
 
                 t_tile = time.perf_counter()
-                pos = nav.move_to(tx, ty)
-                if settle_sec > 0:
-                    time.sleep(settle_sec)
+                pos = nav.move_to(tx, ty, cancel=cancel)
+                if cancel.wait(max(0, settle_sec)):
+                    return
 
                 tile_label = f"{well_name}_r{r_idx:02d}_c{c_idx:02d}"
                 saved = take_scan_photo(tile_label)
@@ -387,7 +400,9 @@ def nav_scan_well():
 
             scan_status["current_step"] = "Returning to (0, 0) landmark..."
             emit_socket_event("scan_status", scan_status)
-            pos = nav.move_to(0, 0)
+            pos = nav.move_to(0, 0, cancel=cancel)
+            if cancel.is_set():
+                return
             total_us = int((time.perf_counter() - t_start) * 1_000_000)
             log_event(
                 f"SCAN_RETURN_ZERO     Arrived at (X={pos['x']:+d}, Y={pos['y']:+d}) — "
@@ -407,12 +422,21 @@ def nav_scan_well():
             set_led(False)
             emit_socket_event("led_state", {"state": False})
             now = datetime.datetime.now(LA_TZ)
-            scan_status["running"] = False
-            scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
-            scan_status["current_step"] = ""
-            emit_socket_event("scan_status", scan_status)
+            if not cancel.is_set():
+                scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
+                scan_status["current_step"] = ""
 
-    threading.Thread(target=run_circular_scan, daemon=True).start()
+    def worker():
+        try:
+            run_circular_scan()
+        finally:
+            finish_scan_status(cancel, "Circular scan stopped.")
+
+    try:
+        threading.Thread(target=worker, daemon=True).start()
+    except RuntimeError:
+        finish_scan_status(cancel, "Scan could not start.")
+        raise
     return jsonify({"status": "started", "well": well_name, "tiles": len(tiles)})
 
 
