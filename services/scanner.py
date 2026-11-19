@@ -38,13 +38,13 @@ _scheduler_started = False
 _scan_lock = threading.Lock()
 
 
-def reserve_scan():
+def reserve_scan(mode):
     global _active_cancel
     with _scan_lock:
         if _active_cancel is not None:
             return None
         _active_cancel = threading.Event()
-        scan_status.update(running=True, stopping=False, current_step="Starting scan...")
+        scan_status.update(running=True, mode=mode, stopping=False, current_step="Starting scan...")
         return _active_cancel
 
 
@@ -61,7 +61,7 @@ def finish_scan_status(cancel, stopped_message):
     with _scan_lock:
         if cancel.is_set():
             scan_status["current_step"] = stopped_message
-        scan_status.update(running=False, stopping=False)
+        scan_status.update(running=False, mode=None, stopping=False)
         _active_cancel = None
         emit_socket_event("scan_status", dict(scan_status))
 
@@ -88,7 +88,7 @@ def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
 
 
 def run_scan() -> None:
-    cancel = reserve_scan()
+    cancel = reserve_scan("six_chamber")
     if cancel is None:
         return
     sid = None

@@ -269,8 +269,9 @@
 
         <!-- ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── -->
         <div class="scan-box" id="scan_box">
-            <b>Circular Boustrophedon Well Scan</b><br>
+            <b>Stage scans</b><br>
             <div class="scan-config-row">
+                <span>Circular scan settings</span>
                 <label>Well:
                     <select id="scan-well-select">
                         <option value="bottom_middle" selected>bottom_middle</option>
@@ -294,7 +295,7 @@
             Last scan: &nbsp;<span id="scan_last">Never</span> &nbsp;|&nbsp;
             Auto-schedule: &nbsp;<span id="scan_next">—</span><br>
             <span id="scan_countdown"></span>
-            <div id="scan_progress"></div>
+            <div role="status"><strong id="scan-mode-status"></strong><span id="scan_progress"></span></div>
             <div class="scan-actions-row">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
                 <button class="scannowbutton secondary-scan-btn" id="scannowbtn" type="button">6-Chamber Single Shot</button>

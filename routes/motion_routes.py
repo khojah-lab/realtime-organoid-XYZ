@@ -351,7 +351,7 @@ def nav_scan_well():
     if not tiles:
         return jsonify({"error": "No tiles fit within circle and soft limits"}), 400
 
-    cancel = reserve_scan()
+    cancel = reserve_scan("circular")
     if cancel is None:
         return jsonify({"error": "A scan is already running"}), 409
 

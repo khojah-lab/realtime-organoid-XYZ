@@ -39,16 +39,14 @@ function renderScanStatus(msg) {
         updateCountdown(msg.next_scan);
     }
     setScanRunning(!!msg.running);
-    if (msg.running) {
-        $("#scan_box").addClass("scan-running");
-        $("#scannowbtn").prop("disabled", true).text("Scanning...");
-        $("#btn-scan-circular").prop("disabled", true).text("Scanning...");
-        $("#scan_countdown").text("");
-    } else {
-        $("#scan_box").removeClass("scan-running");
-        $("#scannowbtn").prop("disabled", false).text("6-Chamber Single Shot");
-        $("#btn-scan-circular").prop("disabled", false).text("▶ Circular Scan Well");
-    }
+    var circular = msg.running && msg.mode === "circular";
+    var sixChamber = msg.running && msg.mode === "six_chamber";
+    var modeLabel = circular ? "Circular Scan Well" : sixChamber ? "6-Chamber Single Shot" : "";
+    $("#scan-mode-status").text(modeLabel ? modeLabel + " · " : "");
+    $("#scan_box").toggleClass("scan-running", !!msg.running);
+    $("#btn-scan-circular").prop("disabled", !!msg.running).toggleClass("active-scan", !!circular);
+    $("#scannowbtn").prop("disabled", !!msg.running).toggleClass("active-scan", !!sixChamber);
+    if (msg.running) $("#scan_countdown").text("");
 }
 
 socket.on('scan_status', renderScanStatus);
