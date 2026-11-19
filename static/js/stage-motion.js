@@ -1,7 +1,7 @@
 // =========================
 // STAGE NAVIGATION, BOOKMARKS & MOTION CONTROLS
 // =========================
-var currentJogStep = 250;
+var tapStepsInput = document.getElementById("nav-tap-steps");
 var WELL_GRID_ORDER = [
     "top_left", "top_middle", "top_right",
     "bottom_left", "bottom_middle", "bottom_right"
@@ -72,12 +72,6 @@ function updateNavUI(state) {
 
 socket.on('nav_state', function(state) {
     updateNavUI(state);
-});
-
-$(document).on("click", ".nav-step-btn", function() {
-    currentJogStep = parseInt($(this).data("steps"), 10) || 250;
-    $(".nav-step-btn").removeClass("active-step");
-    $(this).addClass("active-step");
 });
 
 $("#btn-nav-zero").click(function() {
@@ -171,7 +165,7 @@ function moveParams(isRepeat) {
     if (isRepeat) {
         params.repeat = 1;
     } else {
-        params.steps = currentJogStep;
+        params.steps = tapStepsInput.valueAsNumber;
     }
     if (scanOverride) params.override = 1;
     return params;
@@ -215,6 +209,7 @@ function bindHoldToMove(buttonId, url) {
 
     $(buttonId).on("pointerdown", function(event) {
         if (event.button !== 0 || repeatTimer !== null) return;
+        if (!tapStepsInput.reportValidity()) return;
         pressStartMs = Date.now();
         burstsAccepted = 0;
         sendMove(false);
@@ -224,7 +219,7 @@ function bindHoldToMove(buttonId, url) {
     $(window).on("pointerup pointercancel blur", stopRepeating);
     // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
     $(buttonId).on("click", function(event) {
-        if (event.detail === 0) $.get(url, moveParams(false));
+        if (event.detail === 0 && tapStepsInput.reportValidity()) $.get(url, moveParams(false));
     });
 }
 
