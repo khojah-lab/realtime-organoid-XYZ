@@ -220,6 +220,23 @@
     padding: 2px 5px;
 }
 
+.nav-step-presets {
+    margin-top: 5px;
+}
+
+.nav-step-preset {
+    padding: 2px 7px;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+}
+
+.nav-step-preset[aria-pressed="true"] {
+    background: #1565c0;
+    color: white;
+}
+
 #nav-step-help {
     margin: 6px 0 0;
     font-size: 12px;

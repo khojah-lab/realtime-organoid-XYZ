@@ -160,12 +160,27 @@ $("#scan-unlock-btn").click(function() {
     }
 });
 
-function moveParams(isRepeat) {
-    var params = {};
+var stepPresets = document.querySelectorAll(".nav-step-preset");
+
+function updateStepPresets() {
+    stepPresets.forEach(function(button) {
+        button.setAttribute("aria-pressed", Number(button.dataset.steps) === tapStepsInput.valueAsNumber);
+    });
+}
+
+stepPresets.forEach(function(button) {
+    button.addEventListener("click", function() {
+        tapStepsInput.value = button.dataset.steps;
+        updateStepPresets();
+    });
+});
+tapStepsInput.addEventListener("input", updateStepPresets);
+updateStepPresets();
+
+function moveParams(steps, isRepeat) {
+    var params = { steps: steps };
     if (isRepeat) {
         params.repeat = 1;
-    } else {
-        params.steps = tapStepsInput.valueAsNumber;
     }
     if (scanOverride) params.override = 1;
     return params;
@@ -173,6 +188,7 @@ function moveParams(isRepeat) {
 
 function bindHoldToMove(buttonId, url) {
     var repeatTimer = null;
+    var pressSteps;
     var pressStartMs = 0;
     var burstsAccepted = 0;   // responses of "OK"; the server answers "BUSY" mid-burst
     var requestsInFlight = 0;
@@ -180,7 +196,7 @@ function bindHoldToMove(buttonId, url) {
 
     function sendMove(isRepeat) {
         requestsInFlight++;
-        $.get(url, moveParams(isRepeat))
+        $.get(url, moveParams(pressSteps, isRepeat))
             .done(function(response) { if (response === "OK") burstsAccepted++; })
             .always(function() {
                 requestsInFlight--;
@@ -210,6 +226,7 @@ function bindHoldToMove(buttonId, url) {
     $(buttonId).on("pointerdown", function(event) {
         if (event.button !== 0 || repeatTimer !== null) return;
         if (!tapStepsInput.reportValidity()) return;
+        pressSteps = tapStepsInput.valueAsNumber;
         pressStartMs = Date.now();
         burstsAccepted = 0;
         sendMove(false);
@@ -219,7 +236,7 @@ function bindHoldToMove(buttonId, url) {
     $(window).on("pointerup pointercancel blur", stopRepeating);
     // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
     $(buttonId).on("click", function(event) {
-        if (event.detail === 0 && tapStepsInput.reportValidity()) $.get(url, moveParams(false));
+        if (event.detail === 0 && tapStepsInput.reportValidity()) $.get(url, moveParams(tapStepsInput.valueAsNumber, false));
     });
 }
 

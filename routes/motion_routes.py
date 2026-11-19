@@ -39,9 +39,7 @@ MOVE_DIRECTIONS = {"up", "down", "left", "right", "forward", "backward"}
 
 
 def _parse_steps() -> int:
-    """Return requested step count (defaults to 50 for hold-repeats or if unspecified)."""
-    if request.args.get("repeat"):
-        return DEFAULT_MANUAL_STEPS
+    """Use the requested step count for both taps and hold repeats."""
     try:
         val = int(request.args.get("steps", DEFAULT_MANUAL_STEPS))
         return max(1, min(10000, abs(val)))
