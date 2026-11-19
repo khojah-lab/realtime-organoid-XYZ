@@ -332,3 +332,10 @@
 .log-error { color: #ff5252; }
 .log-warn  { color: #ffd54f; }
 .log-scan  { color: #4dd0e1; }
+
+.scan-schedule { margin-top: 12px; border-top: 1px solid #ccd6e0; padding-top: 8px; }
+.scan-schedule summary { cursor: pointer; font-weight: 600; }
+.scan-schedule fieldset { margin: 8px 0; padding: 8px 0; border: 0; }
+.scan-schedule-fields { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.scan-schedule-fields input[type=number] { width: 5em; }
+.scan-schedule small { display: block; margin-bottom: 8px; }

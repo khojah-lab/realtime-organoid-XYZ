@@ -302,6 +302,24 @@
                 <button id="btn-stop-scan" type="button" hidden>Stop scan</button>
             </div>
 
+            <details class="scan-schedule">
+                <summary>Six-chamber schedule</summary>
+                <form id="scan-schedule-form">
+                    <fieldset disabled>
+                        <legend>Daily schedule · Los Angeles time</legend>
+                        <label><input type="checkbox" name="enabled"> Enable automatic scans</label>
+                        <div class="scan-schedule-fields">
+                            <label>Start <input required type="time" name="start"></label>
+                            <label>End <input required type="time" name="end"></label>
+                            <label>Interval (min) <input required type="number" name="interval" min="1" max="1440" step="1"></label>
+                        </div>
+                        <small>Start times repeat within this window. An earlier end time continues overnight. Busy scans are skipped.</small>
+                        <button type="submit">Save schedule</button>
+                    </fieldset>
+                    <span id="schedule-feedback" role="status"></span>
+                </form>
+            </details>
+
             <!-- Post-Scan (0, 0) Landmark Verification Prompt -->
             <div id="scan-verify-banner">
                 <div id="scan-verify-text">

@@ -35,8 +35,11 @@ function renderScanStatus(msg) {
     $("#scan_next").text(msg.next_scan    || "—");
     $("#scan_progress").text(msg.stopping ? "Stopping scan..." : msg.current_step || "");
 
-    if (msg.next_scan && msg.next_scan !== "Calculating..." && msg.next_scan !== "—") {
-        updateCountdown(msg.next_scan);
+    if (msg.next_scan_iso) {
+        updateCountdown(msg.next_scan_iso);
+    } else {
+        clearInterval(window.countdownInterval);
+        $("#scan_countdown").text("");
     }
     setScanRunning(!!msg.running);
     var circular = msg.running && msg.mode === "circular";
@@ -124,4 +127,36 @@ $(".detectorganoid").click(function() {
 socket.on('response3', function(msg) {
     document.getElementById('detection_image').src =
         "data:image/jpeg;base64," + msg.data;
+});
+
+var scheduleForm = document.getElementById("scan-schedule-form");
+var scheduleFeedback = $("#schedule-feedback");
+$(".scan-schedule").on("toggle", function() {
+    if (!this.open) return;
+    var fields = scheduleForm.elements;
+    $(scheduleForm).find("fieldset").prop("disabled", true);
+    scheduleFeedback.text("Loading schedule...");
+    $.getJSON("/scan_schedule").done(function(settings) {
+        fields.enabled.checked = settings.enabled;
+        fields.start.value = settings.start;
+        fields.end.value = settings.end;
+        fields.interval.value = settings.interval;
+        $(scheduleForm).find("fieldset").prop("disabled", false);
+        scheduleFeedback.text("");
+    }).fail(function() {
+        scheduleFeedback.text("Could not load schedule. Reopen to retry.");
+    });
+});
+$(scheduleForm).on("submit", function(event) {
+    event.preventDefault();
+    var fields = scheduleForm.elements;
+    var settings = {enabled: fields.enabled.checked, start: fields.start.value,
+        end: fields.end.value, interval: fields.interval.valueAsNumber};
+    var fieldset = $(this).find("fieldset").prop("disabled", true);
+    $.ajax({url: "/scan_schedule", method: "POST", contentType: "application/json",
+        data: JSON.stringify(settings)}).done(function() {
+        scheduleFeedback.text(settings.enabled ? "Daily schedule saved." : "Automatic scans disabled.");
+    }).fail(function(xhr) {
+        scheduleFeedback.text((xhr.responseJSON || {}).error || "Could not save schedule.");
+    }).always(function() { fieldset.prop("disabled", false); });
 });

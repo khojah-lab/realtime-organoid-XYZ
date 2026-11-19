@@ -8,6 +8,8 @@ real-time UI status updates.
 """
 
 import datetime
+import json
+import re
 import threading
 import time
 import cv2
@@ -15,6 +17,7 @@ import pytz
 
 from config import (
     AUTO_SCAN_ENABLED,
+    BASE_DIR,
     LA_TZ,
     CAPTURE_JPEG_QUALITY,
     CHAMBER_NAMES,
@@ -91,6 +94,10 @@ def run_scan() -> None:
     cancel = reserve_scan("six_chamber")
     if cancel is None:
         return
+    _run_reserved_scan(cancel)
+
+
+def _run_reserved_scan(cancel):
     sid = None
     try:
         sid = storage_manager.begin_scan()
@@ -187,29 +194,89 @@ def _run_scan(drive_session, cancel) -> None:
                 scan_status["current_step"] = ""
 
 
-def _scan_scheduler_loop() -> None:
-    """Background loop that triggers `run_scan()` at the top of every hour."""
+_schedule_changed = threading.Condition()
+_schedule_file = BASE_DIR / "state" / "scan_schedule.json"
+_schedule = dict(enabled=AUTO_SCAN_ENABLED, start="00:00", end="23:59", interval=60)
+
+
+def validate_schedule(data):
+    if not isinstance(data, dict) or type(data.get("enabled")) is not bool:
+        raise ValueError("Choose whether the schedule is enabled.")
+    for key in ("start", "end"):
+        if not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", str(data.get(key))):
+            raise ValueError("Enter start and end times in HH:MM format.")
+    minutes = data.get("interval")
+    if type(minutes) is not int or not 1 <= minutes <= 1440:
+        raise ValueError("Interval must be a whole number from 1 to 1440 minutes.")
+    return {key: data[key] for key in ("enabled", "start", "end", "interval")}
+
+
+def get_schedule():
+    with _schedule_changed:
+        return dict(_schedule)
+
+
+def save_schedule(data):
+    global _schedule
+    settings = validate_schedule(data)
+    with _schedule_changed:
+        _schedule_file.parent.mkdir(parents=True, exist_ok=True)
+        temp = _schedule_file.with_suffix(".tmp")
+        temp.write_text(json.dumps(settings), encoding="utf8")
+        temp.replace(_schedule_file)
+        _schedule = settings
+        _schedule_changed.notify_all()
+    return settings
+
+
+def next_scan_time(settings, now):
+    if not settings["enabled"]:
+        return None
+    def minutes(value):
+        hour, minute = map(int, value.split(":"))
+        return hour * 60 + minute
+
+    start = minutes(settings["start"])
+    span = (minutes(settings["end"]) - start) % 1440
+    # Walk real minutes so nonexistent spring-forward times are skipped.
+    candidate = now.astimezone(datetime.timezone.utc).replace(second=0, microsecond=0)
     while True:
-        now = datetime.datetime.now(LA_TZ)
-        next_hr = (now + datetime.timedelta(hours=1)).replace(
-            minute=0, second=0, microsecond=0
-        )
-        wait = (next_hr - now).total_seconds()
-        scan_status["next_scan"] = next_hr.strftime("%Y-%m-%d %H:%M")
-        emit_socket_event("scan_status", scan_status)
-        print(f"[SCAN] Next scan at {scan_status['next_scan']} (in {wait/60:.1f} min)")
-        time.sleep(wait)
-        run_scan()
+        candidate += datetime.timedelta(minutes=1)
+        local = candidate.astimezone(LA_TZ)
+        offset = (local.hour * 60 + local.minute - start) % 1440
+        if offset <= span and offset % settings["interval"] == 0:
+            return local
 
 
-def start_scan_scheduler() -> None:
-    """Start the hourly automated scan scheduler daemon thread once."""
-    global _scheduler_started
-    if not AUTO_SCAN_ENABLED:
-        scan_status["next_scan"] = "—"
-        print("[SCAN] Automatic hourly scan scheduler disabled (AUTO_SCAN_ENABLED=False).")
-        return
-    if _scheduler_started:
-        return
-    _scheduler_started = True
-    threading.Thread(target=_scan_scheduler_loop, daemon=True, name="ScanScheduler").start()
+def _scan_scheduler_loop():
+    while True:
+        with _schedule_changed:
+            now = datetime.datetime.now(LA_TZ)
+            due = next_scan_time(_schedule, now)
+            scan_status["next_scan"] = due.strftime("%Y-%m-%d %H:%M %Z") if due else "—"
+            scan_status["next_scan_iso"] = due.isoformat() if due else None
+            emit_socket_event("scan_status", dict(scan_status))
+            if due is None:
+                _schedule_changed.wait()
+                continue
+            if _schedule_changed.wait(timeout=max(0, due.timestamp() - time.time())):
+                continue
+            cancel = reserve_scan("six_chamber")
+        if cancel is not None:
+            threading.Thread(target=_run_reserved_scan, args=(cancel,), daemon=True).start()
+
+
+def start_scan_scheduler():
+    global _scheduler_started, _schedule
+    with _schedule_changed:
+        if _scheduler_started:
+            return
+        try:
+            _schedule = validate_schedule(json.loads(_schedule_file.read_text(encoding="utf8")))
+        except FileNotFoundError:
+            pass
+        except (ValueError, OSError) as exc:
+            _schedule["enabled"] = False
+            print(f"[SCAN] Schedule disabled: {exc}")
+        _scheduler_started = True
+        threading.Thread(target=_scan_scheduler_loop, daemon=True, name="ScanScheduler").start()
