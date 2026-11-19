@@ -302,23 +302,33 @@
                 <button id="btn-stop-scan" type="button" hidden>Stop scan</button>
             </div>
 
-            <details class="scan-schedule">
-                <summary>Six-chamber schedule</summary>
+            <section class="scan-schedule" aria-labelledby="schedule-title">
+                <h3 id="schedule-title">Automatic scan timing</h3>
                 <form id="scan-schedule-form">
                     <fieldset disabled>
-                        <legend>Daily schedule · Los Angeles time</legend>
-                        <label><input type="checkbox" name="enabled"> Enable automatic scans</label>
+                        <label>Scan mode
+                            <select name="mode">
+                                <option value="six_chamber">6-Chamber Single Shot</option>
+                                <option value="circular">Circular Scan Well</option>
+                            </select>
+                        </label>
+                        <small id="schedule-well-note" hidden>Uses the well, R, ΔX and ΔY selected above when you confirm.</small>
                         <div class="scan-schedule-fields">
-                            <label>Start <input required type="time" name="start"></label>
-                            <label>End <input required type="time" name="end"></label>
+                            <label>Start time <input required type="time" name="start"></label>
+                            <label>End time <input required type="time" name="end"></label>
                             <label>Interval (min) <input required type="number" name="interval" min="1" max="1440" step="1"></label>
                         </div>
-                        <small>Start times repeat within this window. An earlier end time continues overnight. Busy scans are skipped.</small>
-                        <button type="submit">Save schedule</button>
+                        <small>Daily · Los Angeles time</small>
+                        <button type="submit">Confirm and start automatic scans</button>
                     </fieldset>
-                    <span id="schedule-feedback" role="status"></span>
                 </form>
-            </details>
+                <div id="schedule-active" hidden>
+                    <strong>Automatic scanning enabled</strong>
+                    <p id="schedule-summary"></p>
+                    <button type="button" id="schedule-cancel">Cancel automatic scans</button>
+                </div>
+                <span id="schedule-feedback" role="status"></span>
+            </section>
 
             <!-- Post-Scan (0, 0) Landmark Verification Prompt -->
             <div id="scan-verify-banner">

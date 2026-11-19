@@ -131,32 +131,60 @@ socket.on('response3', function(msg) {
 
 var scheduleForm = document.getElementById("scan-schedule-form");
 var scheduleFeedback = $("#schedule-feedback");
-$(".scan-schedule").on("toggle", function() {
-    if (!this.open) return;
-    var fields = scheduleForm.elements;
-    $(scheduleForm).find("fieldset").prop("disabled", true);
-    scheduleFeedback.text("Loading schedule...");
-    $.getJSON("/scan_schedule").done(function(settings) {
-        fields.enabled.checked = settings.enabled;
-        fields.start.value = settings.start;
-        fields.end.value = settings.end;
-        fields.interval.value = settings.interval;
-        $(scheduleForm).find("fieldset").prop("disabled", false);
-        scheduleFeedback.text("");
-    }).fail(function() {
-        scheduleFeedback.text("Could not load schedule. Reopen to retry.");
-    });
+var savedSchedule;
+var scheduleFields = scheduleForm.elements;
+
+function showModeNote() {
+    $("#schedule-well-note").prop("hidden", scheduleFields.mode.value !== "circular");
+}
+
+function renderSchedule(settings) {
+    savedSchedule = settings;
+    scheduleFields.mode.value = settings.mode || "six_chamber";
+    scheduleFields.start.value = settings.start;
+    scheduleFields.end.value = settings.end;
+    scheduleFields.interval.value = settings.interval;
+    showModeNote();
+    scheduleForm.hidden = settings.enabled;
+    $("#schedule-active").prop("hidden", !settings.enabled);
+    $(scheduleForm).find("fieldset").prop("disabled", false);
+    if (settings.enabled) {
+        var mode = settings.mode === "circular"
+            ? "Circular Scan Well (" + settings.circular.well + ")"
+            : "6-Chamber Single Shot";
+        var overnight = settings.end < settings.start ? " the next day" : "";
+        $("#schedule-summary").text(mode + " runs every " + settings.interval + " min, daily from " +
+            settings.start + " to " + settings.end + overnight + " (Los Angeles time).");
+    }
+    scheduleFeedback.text(settings.enabled ? "" : "Automatic scanning is off.");
+}
+
+function submitSchedule(settings) {
+    var controls = $(scheduleForm).find("fieldset").add("#schedule-cancel");
+    controls.prop("disabled", true);
+    $.ajax({url: "/scan_schedule", method: "POST", contentType: "application/json",
+        data: JSON.stringify(settings)}).done(renderSchedule).fail(function(xhr) {
+        scheduleFeedback.text((xhr.responseJSON || {}).error || "Schedule update unconfirmed. Refresh to check.");
+    }).always(function() { controls.prop("disabled", false); });
+}
+
+socket.on("scan_schedule", renderSchedule);
+$(scheduleFields.mode).on("change", showModeNote);
+$.getJSON("/scan_schedule", renderSchedule).fail(function() {
+    scheduleFeedback.text("Could not load automatic scan settings. Refresh to retry.");
 });
 $(scheduleForm).on("submit", function(event) {
     event.preventDefault();
-    var fields = scheduleForm.elements;
-    var settings = {enabled: fields.enabled.checked, start: fields.start.value,
-        end: fields.end.value, interval: fields.interval.valueAsNumber};
-    var fieldset = $(this).find("fieldset").prop("disabled", true);
-    $.ajax({url: "/scan_schedule", method: "POST", contentType: "application/json",
-        data: JSON.stringify(settings)}).done(function() {
-        scheduleFeedback.text(settings.enabled ? "Daily schedule saved." : "Automatic scans disabled.");
-    }).fail(function(xhr) {
-        scheduleFeedback.text((xhr.responseJSON || {}).error || "Could not save schedule.");
-    }).always(function() { fieldset.prop("disabled", false); });
+    var settings = {enabled: true, mode: scheduleFields.mode.value, start: scheduleFields.start.value,
+        end: scheduleFields.end.value, interval: scheduleFields.interval.valueAsNumber};
+    if (settings.mode === "circular") {
+        settings.circular = {well: $("#scan-well-select").val(),
+            radius: document.getElementById("scan-geom-r").valueAsNumber,
+            step_x: document.getElementById("scan-geom-sx").valueAsNumber,
+            step_y: document.getElementById("scan-geom-sy").valueAsNumber};
+    }
+    submitSchedule(settings);
+});
+$("#schedule-cancel").on("click", function() {
+    submitSchedule(Object.assign({}, savedSchedule, {enabled: false}));
 });

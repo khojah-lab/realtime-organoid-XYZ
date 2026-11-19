@@ -194,9 +194,136 @@ def _run_scan(drive_session, cancel) -> None:
                 scan_status["current_step"] = ""
 
 
+def start_circular_scan(data, *, remember_geometry=False):
+    if get_scan_status()["running"]:
+        return {"error": "A scan is already running"}, 409
+
+    nav = get_navigator()
+    if nav.state.get("position_uncertain"):
+        log_event("SCAN_REJECTED        Stage position uncertain; zero or sync required")
+        return {
+            "error": "Stage position is marked UNCERTAIN after an interrupted move. Zero or Sync first."
+        }, 409
+
+    well_name = (data.get("well") or "bottom_middle").strip()
+    if well_name not in nav.bookmarks:
+        return {"error": f"Unknown bookmark '{well_name}'"}, 400
+
+    geom = dict(nav.geometry)
+    try:
+        if all(k in data and data[k] not in (None, "") for k in ("radius", "step_x", "step_y")):
+            radius, sx, sy = (int(data[k]) for k in ("radius", "step_x", "step_y"))
+            if min(radius, sx, sy) < 1:
+                raise ValueError("Radius and step sizes must be positive.")
+            if remember_geometry:
+                nav.set_geometry(radius, sx, sy)
+            geom.update(well_radius_steps=radius, step_x=sx, step_y=sy)
+    except ValueError as e:
+        return {"error": str(e)}, 400
+
+    cx, cy = nav.bookmarks[well_name]
+    tiles = nav.generate_circular_grid(
+        center_x=cx,
+        center_y=cy,
+        radius=int(geom["well_radius_steps"]),
+        step_x=int(geom["step_x"]),
+        step_y=int(geom["step_y"]),
+    )
+    if not tiles:
+        return {"error": "No tiles fit within circle and soft limits"}, 400
+
+    cancel = reserve_scan("circular")
+    if cancel is None:
+        return {"error": "A scan is already running"}, 409
+
+    def run_circular_scan():
+        t_start = time.perf_counter()
+        scan_status["running"] = True
+        scan_status["current_step"] = f"Starting circular scan on {well_name} ({len(tiles)} tiles)..."
+        emit_socket_event("scan_status", scan_status)
+
+        set_led(True)
+        emit_socket_event("led_state", {"state": True})
+
+        log_event(
+            f"SCAN_WELL_START      {well_name} (R={geom['well_radius_steps']}, "
+            f"step={geom['step_x']}x{geom['step_y']}, {len(tiles)} tiles)"
+        )
+
+        settle_sec = float(geom.get("move_settle_sec", 0.5))
+        captured = 0
+
+        try:
+            for idx, tile in enumerate(tiles, 1):
+                if cancel.is_set():
+                    return
+                tx, ty = tile["x"], tile["y"]
+                r_idx, c_idx = tile["row"], tile["col"]
+                scan_status["current_step"] = (
+                    f"{well_name} tile {idx}/{len(tiles)} (r{r_idx:02d}_c{c_idx:02d}) @ ({tx:+d}, {ty:+d})"
+                )
+                emit_socket_event("scan_status", scan_status)
+
+                t_tile = time.perf_counter()
+                pos = nav.move_to(tx, ty, cancel=cancel)
+                if cancel.wait(max(0, settle_sec)):
+                    return
+
+                tile_label = f"{well_name}_r{r_idx:02d}_c{c_idx:02d}"
+                saved = take_scan_photo(tile_label)
+                if saved:
+                    captured += 1
+                tile_us = int((time.perf_counter() - t_tile) * 1_000_000)
+                log_event(
+                    f"SCAN_TILE [{idx:02d}/{len(tiles):02d}]    {tile_label} @ (X={pos['x']:+d}, Y={pos['y']:+d})",
+                    latency_us=tile_us,
+                )
+
+            scan_status["current_step"] = "Returning to (0, 0) landmark..."
+            emit_socket_event("scan_status", scan_status)
+            pos = nav.move_to(0, 0, cancel=cancel)
+            if cancel.is_set():
+                return
+            total_us = int((time.perf_counter() - t_start) * 1_000_000)
+            log_event(
+                f"SCAN_RETURN_ZERO     Arrived at (X={pos['x']:+d}, Y={pos['y']:+d}) — "
+                f"{captured}/{len(tiles)} tiles captured, awaiting landmark check",
+                latency_us=total_us,
+            )
+            emit_socket_event(
+                "scan_verify_prompt",
+                {
+                    "well": well_name,
+                    "tiles_captured": captured,
+                    "tiles_total": len(tiles),
+                    "position": pos,
+                },
+            )
+        finally:
+            set_led(False)
+            emit_socket_event("led_state", {"state": False})
+            now = datetime.datetime.now(LA_TZ)
+            if not cancel.is_set():
+                scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
+                scan_status["current_step"] = ""
+
+    def worker():
+        try:
+            run_circular_scan()
+        finally:
+            finish_scan_status(cancel, "Circular scan stopped.")
+
+    try:
+        threading.Thread(target=worker, daemon=True).start()
+    except RuntimeError:
+        finish_scan_status(cancel, "Scan could not start.")
+        raise
+    return {"status": "started", "well": well_name, "tiles": len(tiles)}, 200
+
+
 _schedule_changed = threading.Condition()
 _schedule_file = BASE_DIR / "state" / "scan_schedule.json"
-_schedule = dict(enabled=AUTO_SCAN_ENABLED, start="00:00", end="23:59", interval=60)
+_schedule = dict(enabled=AUTO_SCAN_ENABLED, mode="six_chamber", start="00:00", end="23:59", interval=60)
 
 
 def validate_schedule(data):
@@ -208,7 +335,20 @@ def validate_schedule(data):
     minutes = data.get("interval")
     if type(minutes) is not int or not 1 <= minutes <= 1440:
         raise ValueError("Interval must be a whole number from 1 to 1440 minutes.")
-    return {key: data[key] for key in ("enabled", "start", "end", "interval")}
+    settings = {key: data[key] for key in ("enabled", "start", "end", "interval")}
+    mode = data.get("mode", "six_chamber")
+    if mode not in ("six_chamber", "circular"):
+        raise ValueError("Select a scan mode.")
+    settings["mode"] = mode
+    if mode == "circular":
+        params = data.get("circular")
+        if not isinstance(params, dict) or not isinstance(params.get("well"), str) or not params["well"]:
+            raise ValueError("Select a well for the circular scan.")
+        for key in ("radius", "step_x", "step_y"):
+            if type(params.get(key)) is not int or params[key] < 1:
+                raise ValueError("Circular radius and step sizes must be positive whole numbers.")
+        settings["circular"] = {k: params[k] for k in ("well", "radius", "step_x", "step_y")}
+    return settings
 
 
 def get_schedule():
@@ -226,6 +366,7 @@ def save_schedule(data):
         temp.replace(_schedule_file)
         _schedule = settings
         _schedule_changed.notify_all()
+    emit_socket_event("scan_schedule", settings)
     return settings
 
 
@@ -260,6 +401,14 @@ def _scan_scheduler_loop():
                 _schedule_changed.wait()
                 continue
             if _schedule_changed.wait(timeout=max(0, due.timestamp() - time.time())):
+                continue
+            if _schedule["mode"] == "circular":
+                try:
+                    result, status = start_circular_scan(_schedule["circular"])
+                    if status != 200:
+                        log_event(f"Scheduled circular scan skipped: {result['error']}")
+                except Exception as exc:
+                    log_event(f"Scheduled circular scan failed: {exc!r}")
                 continue
             cancel = reserve_scan("six_chamber")
         if cancel is not None:

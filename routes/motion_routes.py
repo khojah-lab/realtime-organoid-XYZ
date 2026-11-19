@@ -7,12 +7,11 @@ camera zoom/focus/autofocus adjustments.
 ────────────────────────────────────────────────────────────────
 """
 
-import datetime
 import threading
 import time
 from flask import Blueprint, jsonify, request
 
-from config import DEFAULT_MANUAL_STEPS, LA_TZ
+from config import DEFAULT_MANUAL_STEPS
 from hardware.dc_motors import (
     get_motor_states,
     set_all_motors,
@@ -20,13 +19,11 @@ from hardware.dc_motors import (
     stop_all_motors,
     stop_motor as stop_motor_single,
 )
-from hardware.gpio_control import set_led
 from hardware.stepper_motors import release_all
 from routes.main_routes import system_params
-from services.scanner import (get_scan_status, scan_status, take_scan_photo, reserve_scan,
-                              request_scan_stop, finish_scan_status)
+from services.scanner import get_scan_status, request_scan_stop, start_circular_scan
 from services.stage_navigator import get_navigator
-from services.telemetry import emit_socket_event, log_event
+from services.telemetry import log_event
 
 motion_bp = Blueprint("motion", __name__)
 
@@ -313,131 +310,9 @@ def stop_scan():
 
 @motion_bp.route("/nav/scan_well", methods=["POST"])
 def nav_scan_well():
-    """
-    Execute a circular boustrophedon (snake) scan on a single bookmarked well,
-    return to `(0, 0)` landmark, and emit `scan_verify_prompt` to the UI.
-    """
-    if get_scan_status()["running"]:
-        return jsonify({"error": "A scan is already running"}), 409
-
-    nav = get_navigator()
-    if nav.state.get("position_uncertain"):
-        log_event("SCAN_REJECTED        Stage position uncertain; zero or sync required")
-        return jsonify({
-            "error": "Stage position is marked UNCERTAIN after an interrupted move. Zero or Sync first."
-        }), 409
-
     data = request.get_json(silent=True) or request.form or request.args
-    well_name = (data.get("well") or "bottom_middle").strip()
-    if well_name not in nav.bookmarks:
-        return jsonify({"error": f"Unknown bookmark '{well_name}'"}), 400
-
-    # Optional inline geometry override from UI inputs
-    try:
-        if all(k in data and data[k] not in (None, "") for k in ("radius", "step_x", "step_y")):
-            nav.set_geometry(int(data["radius"]), int(data["step_x"]), int(data["step_y"]))
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    cx, cy = nav.bookmarks[well_name]
-    geom = nav.geometry
-    tiles = nav.generate_circular_grid(
-        center_x=cx,
-        center_y=cy,
-        radius=int(geom["well_radius_steps"]),
-        step_x=int(geom["step_x"]),
-        step_y=int(geom["step_y"]),
-    )
-    if not tiles:
-        return jsonify({"error": "No tiles fit within circle and soft limits"}), 400
-
-    cancel = reserve_scan("circular")
-    if cancel is None:
-        return jsonify({"error": "A scan is already running"}), 409
-
-    def run_circular_scan():
-        t_start = time.perf_counter()
-        scan_status["running"] = True
-        scan_status["current_step"] = f"Starting circular scan on {well_name} ({len(tiles)} tiles)..."
-        emit_socket_event("scan_status", scan_status)
-
-        set_led(True)
-        emit_socket_event("led_state", {"state": True})
-
-        log_event(
-            f"SCAN_WELL_START      {well_name} (R={geom['well_radius_steps']}, "
-            f"step={geom['step_x']}x{geom['step_y']}, {len(tiles)} tiles)"
-        )
-
-        settle_sec = float(geom.get("move_settle_sec", 0.5))
-        captured = 0
-
-        try:
-            for idx, tile in enumerate(tiles, 1):
-                if cancel.is_set():
-                    return
-                tx, ty = tile["x"], tile["y"]
-                r_idx, c_idx = tile["row"], tile["col"]
-                scan_status["current_step"] = (
-                    f"{well_name} tile {idx}/{len(tiles)} (r{r_idx:02d}_c{c_idx:02d}) @ ({tx:+d}, {ty:+d})"
-                )
-                emit_socket_event("scan_status", scan_status)
-
-                t_tile = time.perf_counter()
-                pos = nav.move_to(tx, ty, cancel=cancel)
-                if cancel.wait(max(0, settle_sec)):
-                    return
-
-                tile_label = f"{well_name}_r{r_idx:02d}_c{c_idx:02d}"
-                saved = take_scan_photo(tile_label)
-                if saved:
-                    captured += 1
-                tile_us = int((time.perf_counter() - t_tile) * 1_000_000)
-                log_event(
-                    f"SCAN_TILE [{idx:02d}/{len(tiles):02d}]    {tile_label} @ (X={pos['x']:+d}, Y={pos['y']:+d})",
-                    latency_us=tile_us,
-                )
-
-            scan_status["current_step"] = "Returning to (0, 0) landmark..."
-            emit_socket_event("scan_status", scan_status)
-            pos = nav.move_to(0, 0, cancel=cancel)
-            if cancel.is_set():
-                return
-            total_us = int((time.perf_counter() - t_start) * 1_000_000)
-            log_event(
-                f"SCAN_RETURN_ZERO     Arrived at (X={pos['x']:+d}, Y={pos['y']:+d}) — "
-                f"{captured}/{len(tiles)} tiles captured, awaiting landmark check",
-                latency_us=total_us,
-            )
-            emit_socket_event(
-                "scan_verify_prompt",
-                {
-                    "well": well_name,
-                    "tiles_captured": captured,
-                    "tiles_total": len(tiles),
-                    "position": pos,
-                },
-            )
-        finally:
-            set_led(False)
-            emit_socket_event("led_state", {"state": False})
-            now = datetime.datetime.now(LA_TZ)
-            if not cancel.is_set():
-                scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
-                scan_status["current_step"] = ""
-
-    def worker():
-        try:
-            run_circular_scan()
-        finally:
-            finish_scan_status(cancel, "Circular scan stopped.")
-
-    try:
-        threading.Thread(target=worker, daemon=True).start()
-    except RuntimeError:
-        finish_scan_status(cancel, "Scan could not start.")
-        raise
-    return jsonify({"status": "started", "well": well_name, "tiles": len(tiles)})
+    result, status = start_circular_scan(data, remember_geometry=True)
+    return jsonify(result), status
 
 
 @motion_bp.route("/nav/verify_landmark", methods=["POST"])
