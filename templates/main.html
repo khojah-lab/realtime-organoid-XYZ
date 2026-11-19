@@ -292,9 +292,7 @@
                     <input type="number" id="scan-geom-sy" value="500">
                 </label>
             </div>
-            Last scan: &nbsp;<span id="scan_last">Never</span> &nbsp;|&nbsp;
-            Auto-schedule: &nbsp;<span id="scan_next">—</span><br>
-            <span id="scan_countdown"></span>
+            <div>Last scan: <span id="scan_last">Never</span></div>
             <div role="status"><strong id="scan-mode-status"></strong><span id="scan_progress"></span></div>
             <div class="scan-actions-row">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
@@ -329,6 +327,11 @@
                 <div id="schedule-active" hidden>
                     <strong>Automatic scanning enabled</strong>
                     <p id="schedule-summary"></p>
+                    <p id="schedule-next" hidden>
+                        <strong>Next automatic scan:</strong>
+                        <time id="schedule-next-time"></time>
+                        <span id="schedule-remaining"></span>
+                    </p>
                     <button type="button" id="schedule-cancel">Cancel automatic scans</button>
                 </div>
                 <span id="schedule-feedback" role="status"></span>

@@ -39,10 +39,13 @@
     min-height: 1.2em;
 }
 
-#scan_countdown {
-    color: #1565C0;
-    font-weight: bold;
-    font-size: 14px;
+#schedule-next {
+    margin: 0 0 12px;
+    color: #163e69;
+}
+#schedule-remaining {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ── 6-WELL STAGE NAVIGATION & BOOKMARKS ── */

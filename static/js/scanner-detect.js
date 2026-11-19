@@ -2,45 +2,41 @@
 // SCANNER CONTROLS, LANDMARK VERIFY & ORGANOID DETECTION
 // =========================
 
-// Countdown timer for next scan
-function updateCountdown(nextScanStr) {
-    if (window.countdownInterval) {
-        clearInterval(window.countdownInterval);
-    }
-    window.countdownInterval = setInterval(function() {
-        var now = new Date();
-        var nextScan = new Date(nextScanStr);
-        var diff = nextScan - now;
-        if (diff <= 0) {
-            $("#scan_countdown").text("Starting scan...");
-            clearInterval(window.countdownInterval);
+var nextScanIso = null;
+var countdownTimer = null;
+
+function showNextScan(iso, label) {
+    var due = Date.parse(iso);
+    if (!Number.isFinite(due)) iso = null;
+    if (iso === nextScanIso) return;
+    nextScanIso = iso;
+    clearInterval(countdownTimer);
+    $("#schedule-next").prop("hidden", !iso);
+    if (!iso) return;
+
+    $("#schedule-next-time").attr("datetime", iso).text(label);
+    function tick() {
+        var left = Math.ceil((due - Date.now()) / 1000);
+        if (left <= 0) {
+            $("#schedule-remaining").text("(due now)");
+            clearInterval(countdownTimer);
             return;
         }
-        var hours = Math.floor(diff / (1000 * 60 * 60));
-        var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        var seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        $("#scan_countdown").text(
-            "⏱ Next scan in: " +
-            (hours > 0 ? hours + "h " : "") +
-            minutes + "m " +
-            seconds + "s"
-        );
-    }, 1000);
+        var h = Math.floor(left / 3600);
+        var m = Math.floor(left / 60) % 60;
+        $("#schedule-remaining").text("(in " + (h ? h + "h " : "") + m + "m " + left % 60 + "s)");
+    }
+    countdownTimer = setInterval(tick, 1000);
+    tick();
 }
 
 // Scan status updates
 function renderScanStatus(msg) {
     $('#btn-stop-scan').prop('hidden', !msg.running).prop('disabled', !!msg.stopping);
     $("#scan_last").text(msg.last_scan    || "Never");
-    $("#scan_next").text(msg.next_scan    || "—");
+    showNextScan(msg.next_scan_iso, msg.next_scan);
     $("#scan_progress").text(msg.stopping ? "Stopping scan..." : msg.current_step || "");
 
-    if (msg.next_scan_iso) {
-        updateCountdown(msg.next_scan_iso);
-    } else {
-        clearInterval(window.countdownInterval);
-        $("#scan_countdown").text("");
-    }
     setScanRunning(!!msg.running);
     var circular = msg.running && msg.mode === "circular";
     var sixChamber = msg.running && msg.mode === "six_chamber";
@@ -49,7 +45,6 @@ function renderScanStatus(msg) {
     $("#scan_box").toggleClass("scan-running", !!msg.running);
     $("#btn-scan-circular").prop("disabled", !!msg.running).toggleClass("active-scan", !!circular);
     $("#scannowbtn").prop("disabled", !!msg.running).toggleClass("active-scan", !!sixChamber);
-    if (msg.running) $("#scan_countdown").text("");
 }
 
 socket.on('scan_status', renderScanStatus);
@@ -144,6 +139,7 @@ function displayScheduleDate(iso) {
 
 function renderSchedule(settings) {
     savedSchedule = settings;
+    if (!settings.enabled) showNextScan(null);
     scheduleFields.mode.value = settings.mode || "six_chamber";
     var today = new Intl.DateTimeFormat("sv-SE", {
         timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit"
