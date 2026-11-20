@@ -366,13 +366,21 @@ _schedule = dict(enabled=AUTO_SCAN_ENABLED, mode="six_chamber", start="00:00", e
 def validate_schedule(data):
     if not isinstance(data, dict) or type(data.get("enabled")) is not bool:
         raise ValueError("Choose whether the schedule is enabled.")
-    for key in ("start", "end"):
+    interval_only = data.get("timing") == "interval"
+    for key in (() if interval_only else ("start", "end")):
         if not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", str(data.get(key))):
             raise ValueError("Enter start and end times in HH:MM format.")
     minutes = data.get("interval")
     if type(minutes) is not int or not 1 <= minutes <= 1440:
         raise ValueError("Interval must be a whole number from 1 to 1440 minutes.")
-    settings = {key: data[key] for key in ("enabled", "start", "end", "interval")}
+    settings = dict(enabled=data["enabled"], interval=minutes)
+    if interval_only:
+        anchor = data.get("anchor")
+        if type(anchor) is not int or not 0 <= anchor <= 253402214400:
+            raise ValueError("Invalid interval start time.")
+        settings.update(timing="interval", anchor=anchor)
+    else:
+        settings.update(start=data["start"], end=data["end"])
     for key in ("start_date", "end_date"):
         value = data.get(key)
         if value not in (None, ""):
@@ -404,6 +412,8 @@ def get_schedule():
 
 def save_schedule(data):
     global _schedule
+    if isinstance(data, dict) and data.get("timing") == "interval":
+        data = dict(data, anchor=int(time.time()))
     settings = validate_schedule(data)
     if settings["enabled"] and settings.get("end_date") and next_scan_time(settings, datetime.datetime.now(LA_TZ)) is None:
         raise ValueError("No scan start remains within the selected dates and times.")
@@ -421,6 +431,12 @@ def save_schedule(data):
 def next_scan_time(settings, now):
     if not settings["enabled"]:
         return None
+    if settings.get("timing") == "interval":
+        period = settings["interval"] * 60
+        anchor = settings["anchor"]
+        slot = max(1, int((now.timestamp() - anchor) // period) + 1)
+        return datetime.datetime.fromtimestamp(anchor + slot * period, LA_TZ)
+
     def minutes(value):
         hour, minute = map(int, value.split(":"))
         return hour * 60 + minute

@@ -309,24 +309,33 @@
                 <div>Last scheduled scan: <span id="scheduled-scan-last">Loading…</span></div>
                 <form id="scan-schedule-form">
                     <fieldset disabled>
-                        <label>Scan mode
-                            <select name="mode">
-                                <option value="six_chamber">6-Chamber Single Shot</option>
-                                <option value="circular">Circular Scan Well</option>
-                            </select>
-                        </label>
+                        <div class="scan-schedule-fields">
+                            <label>Scan mode
+                                <select name="mode">
+                                    <option value="six_chamber">6-Chamber Single Shot</option>
+                                    <option value="circular">Circular Scan Well</option>
+                                </select>
+                            </label>
+                            <label>Interval (minutes)
+                                <input required type="number" name="interval" min="1" max="1440" step="1">
+                            </label>
+                        </div>
                         <small id="schedule-well-note" hidden>Uses the well, R, ΔX and ΔY selected above when you confirm.</small>
-                        <div class="scan-schedule-fields">
-                            <label>Start date <input required type="date" name="start_date"></label>
-                            <label>End date (optional) <input type="date" name="end_date"></label>
+                        <div class="schedule-options">
+                            <button id="schedule-start" type="submit">Start automatic scans</button>
+                            <details id="schedule-advanced">
+                                <summary>Advanced: dates and times</summary>
+                                <div class="scan-schedule-fields">
+                                    <label>Start date <input type="date" name="start_date"></label>
+                                    <label>End date <input type="date" name="end_date"></label>
+                                </div>
+                                <div class="scan-schedule-fields">
+                                    <label>Start time <input type="time" name="start"></label>
+                                    <label>End time <input type="time" name="end"></label>
+                                </div>
+                                <small>Optional daily window in Los Angeles time. Clear all four fields to use only the interval.</small>
+                            </details>
                         </div>
-                        <div class="scan-schedule-fields">
-                            <label>Start time <input required type="time" name="start"></label>
-                            <label>End time <input required type="time" name="end"></label>
-                            <label>Interval (min) <input required type="number" name="interval" min="1" max="1440" step="1"></label>
-                        </div>
-                        <small>Los Angeles time. Leave the end date empty to repeat indefinitely.</small>
-                        <button type="submit">Confirm and start automatic scans</button>
                     </fieldset>
                 </form>
                 <div id="schedule-active" hidden>

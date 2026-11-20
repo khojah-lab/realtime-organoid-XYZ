@@ -142,15 +142,16 @@ function renderSchedule(settings) {
     savedSchedule = settings;
     if (!settings.enabled) showNextScan(null);
     scheduleFields.mode.value = settings.mode || "six_chamber";
-    var today = new Intl.DateTimeFormat("sv-SE", {
-        timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit"
-    }).format(new Date());
-    scheduleFields.start_date.value = settings.start_date || today;
+    var useWindow = settings.timing !== "interval" && (settings.enabled || settings.start_date ||
+        settings.end_date || settings.start !== "00:00" || settings.end !== "23:59");
+    document.getElementById("schedule-advanced").open = !!useWindow;
+    scheduleFields.start_date.value = settings.start_date || "";
     scheduleFields.end_date.value = settings.end_date || "";
     scheduleFields.end_date.min = scheduleFields.start_date.value;
-    scheduleFields.start.value = settings.start;
-    scheduleFields.end.value = settings.end;
+    scheduleFields.start.value = useWindow ? settings.start : "";
+    scheduleFields.end.value = useWindow ? settings.end : "";
     scheduleFields.interval.value = settings.interval;
+    updateStartLabel();
     showModeNote();
     scheduleForm.hidden = settings.enabled;
     $("#schedule-active").prop("hidden", !settings.enabled);
@@ -162,8 +163,11 @@ function renderSchedule(settings) {
         var overnight = settings.end < settings.start ? " the next day" : "";
         var dates = settings.start_date ? " From " + displayScheduleDate(settings.start_date) : "";
         if (settings.end_date) dates += " through " + displayScheduleDate(settings.end_date) + " inclusive";
-        $("#schedule-summary").text(mode + " runs every " + settings.interval + " min, daily from " +
-            settings.start + " to " + settings.end + overnight + " (Los Angeles time)." + (dates ? dates + "." : ""));
+        var summary = mode + " runs every " + settings.interval + " min";
+        if (settings.timing !== "interval") {
+            summary += ", daily from " + settings.start + " to " + settings.end + overnight + " (Los Angeles time)";
+        }
+        $("#schedule-summary").text(summary + "." + (dates ? dates + "." : ""));
     }
     scheduleFeedback.text(settings.enabled ? "" : "Automatic scanning is off.");
 }
@@ -177,6 +181,13 @@ function submitSchedule(settings) {
     }).always(function() { controls.prop("disabled", false); });
 }
 
+function updateStartLabel() {
+    var n = scheduleFields.interval.valueAsNumber;
+    $("#schedule-start").text(scheduleFields.interval.validity.valid
+        ? "Start scanning every " + n + (n === 1 ? " minute" : " minutes")
+        : "Start automatic scans");
+}
+$(scheduleFields.interval).on("input", updateStartLabel);
 socket.on("scan_schedule", renderSchedule);
 $(scheduleFields.start_date).on("input", function() {
     scheduleFields.end_date.min = this.value;
@@ -191,6 +202,12 @@ $(scheduleForm).on("submit", function(event) {
         end: scheduleFields.end.value, interval: scheduleFields.interval.valueAsNumber};
     settings.start_date = scheduleFields.start_date.value;
     settings.end_date = scheduleFields.end_date.value;
+    if (settings.start_date || settings.end_date || settings.start || settings.end) {
+        settings.start = settings.start || "00:00";
+        settings.end = settings.end || "23:59";
+    } else {
+        settings.timing = "interval";
+    }
     if (settings.mode === "circular") {
         settings.circular = {well: $("#scan-well-select").val(),
             radius: document.getElementById("scan-geom-r").valueAsNumber,

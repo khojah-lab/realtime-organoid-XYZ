@@ -366,3 +366,6 @@
 .circular-settings legend { font-size: inherit; font-weight: 600; width: auto; margin: 0; padding: 0 4px; border: 0; }
 .circular-settings .scan-config-row { align-items: end; margin: 0 0 6px; }
 .circular-settings label { display: grid; gap: 3px; }
+
+.schedule-options { display: flex; align-items: flex-start; gap: 8px 16px; flex-wrap: wrap; }
+.schedule-options summary { cursor: pointer; padding: 4px 0; color: #174b84; }
