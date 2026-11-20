@@ -60,8 +60,15 @@ $(".focusminus").click(function() {
     s.val(v); $("#focus_text").html(v); fetchdata_zoom_focus();
 });
 
-$(".autofocusbutton").click(function() {
-    $.getJSON({ type: "GET", url: '/autofocus_camera_from_html' });
+$("#focus-set, #focus-return").click(function() {
+    var saving = this.id === "focus-set";
+    $("#focus-status").text(saving ? "Saving focus height..." : "Returning to focus...");
+    $.post("/nav/focus/" + (saving ? "set" : "return")).done(function(state) {
+        updateNavUI(state);
+        $("#focus-status").text(saving ? "Focus height saved. Z = 0." : "At saved focus height.");
+    }).fail(function(xhr) {
+        $("#focus-status").text((xhr.responseJSON || {}).error || "Focus action unconfirmed.");
+    });
 });
 
 // ── DC Motor 4-Channel Controls ──────────────────────────────

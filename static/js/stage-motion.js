@@ -14,6 +14,7 @@ function formatSigned(val) {
 
 function updateNavUI(state) {
     if (!state) return;
+    $("#focus-return").prop("disabled", !state.focus_saved);
     if (state.current_position) {
         $("#nav-pos-x").text(formatSigned(state.current_position.x));
         $("#nav-pos-y").text(formatSigned(state.current_position.y));

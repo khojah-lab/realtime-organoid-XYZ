@@ -63,6 +63,7 @@ class StageNavigator:
 
         self.state: dict = {
             "updated_at": None,
+            "focus_saved": False,
             "in_motion": False,
             "position_uncertain": False,
             "current_position": {"x": 0, "y": 0, "z": 0},
@@ -105,11 +106,13 @@ class StageNavigator:
                         self.state[key].update(loaded[key])
                 self.state["in_motion"] = bool(loaded.get("in_motion", False))
                 self.state["position_uncertain"] = bool(loaded.get("position_uncertain", False))
+                self.state["focus_saved"] = loaded.get("focus_saved") is True
                 self.state["updated_at"] = loaded.get("updated_at")
 
             # Detect hard crash / power loss mid-move
             if self.state["in_motion"]:
                 self.state["in_motion"] = False
+                self.state["focus_saved"] = False
                 self.state["position_uncertain"] = True
                 self.save_state()
                 pos = self.state["current_position"]
@@ -129,6 +132,7 @@ class StageNavigator:
                 "updated_at": self.state["updated_at"],
                 "in_motion": self.state["in_motion"],
                 "position_uncertain": self.state["position_uncertain"],
+                "focus_saved": self.state["focus_saved"],
                 "current_position": dict(self.state["current_position"]),
                 "soft_limits": dict(self.state["soft_limits"]),
                 "bookmarks": {k: list(v) for k, v in self.state["bookmarks"].items()},
@@ -194,13 +198,24 @@ class StageNavigator:
         self.save_state()
 
     # ── Dual Coordinate Reset & Bookmarking ───────────────────
+    def set_focus_zero(self):
+        with self._lock:
+            self.pos["z"] = 0
+            self.state["focus_saved"] = True
+            self.save_state()
+
+    def return_to_focus(self):
+        if not self.state["focus_saved"]:
+            raise ValueError("Set the current focus height first.")
+        self._step_axis("z", -self.pos["z"])
+
     def set_origin(self) -> dict[str, int]:
         """
-        Reset current physical position as (0, 0, 0) (`bottom_left` landmark)
+        Reset current XY position as (0, 0) (`bottom_left` landmark)
         and clear any crash uncertainty flag.
         """
         with self._lock:
-            self.state["current_position"] = {"x": 0, "y": 0, "z": 0}
+            self.pos.update(x=0, y=0)
             self.state["bookmarks"]["bottom_left"] = [0, 0]
             self.state["in_motion"] = False
             self.state["position_uncertain"] = False

@@ -115,7 +115,7 @@
                     <button type="button" class="nav-step-preset" data-steps="50">50</button>
                     <button type="button" class="nav-step-preset" data-steps="70">70</button>
                     <button type="button" class="nav-step-preset" data-steps="100">100</button>
-                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark">Zero (0,0)</button>
+                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark">Zero XY (0,0)</button>
                 </div>
                 <p id="nav-step-help">Each tap or hold repeat uses the selected number of motor steps. Distance per step requires calibration for each axis.</p>
             </div>
@@ -242,7 +242,11 @@
         </div>
 
         <br>
-        <button class="autofocusbutton">Autofocus</button>
+        <div aria-label="Z focus controls">
+            <button type="button" id="focus-set">Set current height as Z = 0</button>
+            <button type="button" id="focus-return" disabled>Return to focus</button>
+            <span id="focus-status" role="status"></span>
+        </div>
 
         <!-- ── STAGE NAVIGATION & 6-WELL BOOKMARKS ── -->
         <div class="scan-box" id="nav_box">

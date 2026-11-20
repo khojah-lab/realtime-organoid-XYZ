@@ -165,7 +165,7 @@ def nav_state():
 
 @motion_bp.route("/nav/zero", methods=["POST"])
 def nav_zero():
-    """Set current position as (0, 0, 0) (`bottom_left` landmark) and clear uncertainty."""
+    """Set current XY position as (0, 0) (`bottom_left` landmark) and clear uncertainty."""
     nav = get_navigator()
     pos = nav.set_origin()
     log_event(f"NAV_ZERO             Origin set -> (X={pos['x']:+d}, Y={pos['y']:+d}, Z={pos['z']:+d})")
@@ -407,6 +407,28 @@ def update_zoom_focus():
     log_event(f"ZOOM_FOCUS           zoom={system_params['zoom']} focus={system_params['focus']}")
     print("ZOOM/FOCUS ->", system_params["zoom"], system_params["focus"])
     return "OK"
+
+
+@motion_bp.route("/nav/focus/<action>", methods=["POST"])
+def stage_focus(action):
+    if action not in ("set", "return"):
+        return jsonify(error="Unknown focus action."), 404
+    if get_scan_status()["running"]:
+        return jsonify(error="Wait until the scan finishes."), 409
+    lock = axis_locks["z"]
+    if not lock.acquire(blocking=False):
+        return jsonify(error="Z axis is moving. Try again after it stops."), 409
+    try:
+        nav = get_navigator()
+        if action == "set":
+            nav.set_focus_zero()
+        else:
+            nav.return_to_focus()
+        return jsonify(nav.get_public_state())
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 409
+    finally:
+        lock.release()
 
 
 @motion_bp.route("/autofocus")
