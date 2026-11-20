@@ -369,16 +369,20 @@
 .log-scan  { color: #4dd0e1; }
 
 .scan-schedule { margin-top: 12px; border-top: 1px solid #ccd6e0; padding-top: 8px; }
-#focus-actions {
-    margin: 10px 0 0;
-    padding: 0;
-    border: 0;
+#focus-actions { margin: 0; padding: 0; border: 0; }
+#focus-recall {
+    padding: 6px 14px;
+    border: 1px solid #2463a5;
+    border-radius: 4px;
+    background: #1565c0;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
 }
-#focus-actions p {
-    margin: 12px 0 6px;
-    padding-top: 10px;
-    border-top: 1px solid #ccd6e0;
-}
+#focus-recall:disabled, #focus-actions:disabled #focus-recall { opacity: .55; cursor: default; }
+#z-origin-heading { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ccd6e0; }
+#focus-actions p { margin: 8px 0; }
 #focus-status:not(:empty) { display: block; margin-top: 8px; }
 
 #scan_box .scan-section-title {
