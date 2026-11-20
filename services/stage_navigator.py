@@ -362,6 +362,11 @@ class StageNavigator:
 
         return dict(self.pos)
 
+    def jog_axis(self, axis: str, steps: int, cancel: threading.Event) -> dict[str, int]:
+        """Move only the operator-selected axis, including beyond navigation limits."""
+        self._step_axis(axis, steps, cancel)
+        return dict(self.pos)
+
     def move_by(self, dx: int = 0, dy: int = 0, dz: int = 0) -> dict[str, int]:
         """Relative move by (dx, dy, dz) steps, clamped to soft limits."""
         return self.move_to(

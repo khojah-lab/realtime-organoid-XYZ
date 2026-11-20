@@ -31,6 +31,7 @@ motion_bp = Blueprint("motion", __name__)
 # held, so a burst is dropped if the same axis is still moving (otherwise two
 # threads would step the same motor at once).
 axis_locks = {"x": threading.Lock(), "y": threading.Lock(), "z": threading.Lock()}
+jog_cancels = {axis: threading.Event() for axis in axis_locks}
 nav_move_lock = threading.Lock()
 active_goto = None  # (cancel, finished) events for the current navigation command
 
@@ -55,10 +56,10 @@ def _parse_steps() -> int:
         return DEFAULT_MANUAL_STEPS
 
 
-def start_move(axis: str, dx: int, dy: int, dz: int, event_name: str, delta_label: str):
+def start_move(axis: str, steps: int, event_name: str, delta_label: str):
     """
     Validate scan-running state, acquire the per-axis lock non-blocking,
-    and run `StageNavigator.move_by` in a background daemon thread.
+    and run `StageNavigator.jog_axis` in a background daemon thread.
     """
     if get_scan_status()["running"] and not request.args.get("override"):
         if not request.args.get("repeat"):
@@ -69,12 +70,14 @@ def start_move(axis: str, dx: int, dy: int, dz: int, event_name: str, delta_labe
     lock = axis_locks[axis]
     if not lock.acquire(blocking=False):
         return "BUSY"
+    cancel = jog_cancels[axis]
+    cancel.clear()
 
     def run():
         t0 = time.perf_counter()
         try:
             nav = get_navigator()
-            pos = nav.move_by(dx=dx, dy=dy, dz=dz)
+            pos = nav.jog_axis(axis, steps, cancel)
             if not is_repeat:
                 elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
                 log_event(
@@ -92,39 +95,39 @@ def start_move(axis: str, dx: int, dy: int, dz: int, event_name: str, delta_labe
 @motion_bp.route("/up")
 def up():
     s = _parse_steps()
-    return start_move("z", 0, 0, s, "MOVE_UP", f"dz=+{s}")
+    return start_move("z", s, "MOVE_UP", f"dz=+{s}")
 
 
 @motion_bp.route("/down")
 def down():
     s = _parse_steps()
-    return start_move("z", 0, 0, -s, "MOVE_DOWN", f"dz=-{s}")
+    return start_move("z", -s, "MOVE_DOWN", f"dz=-{s}")
 
 
 @motion_bp.route("/left")
 def left():
     s = _parse_steps()
-    return start_move("x", -s, 0, 0, "MOVE_LEFT", f"dx=-{s}")
+    return start_move("x", -s, "MOVE_LEFT", f"dx=-{s}")
 
 
 @motion_bp.route("/right")
 def right():
     s = _parse_steps()
-    return start_move("x", s, 0, 0, "MOVE_RIGHT", f"dx=+{s}")
+    return start_move("x", s, "MOVE_RIGHT", f"dx=+{s}")
 
 
 @motion_bp.route("/forward")
 def forward():
     # +Y moves from bottom row toward top row (stepper.BACKWARD inside StageNavigator)
     s = _parse_steps()
-    return start_move("y", 0, s, 0, "MOVE_FORWARD", f"dy=+{s}")
+    return start_move("y", s, "MOVE_FORWARD", f"dy=+{s}")
 
 
 @motion_bp.route("/backward")
 def backward():
     # -Y moves from top row toward bottom row (stepper.FORWARD inside StageNavigator)
     s = _parse_steps()
-    return start_move("y", 0, -s, 0, "MOVE_BACKWARD", f"dy=-{s}")
+    return start_move("y", -s, "MOVE_BACKWARD", f"dy=-{s}")
 
 
 @motion_bp.route("/move_hold_end")
@@ -148,6 +151,8 @@ def move_hold_end():
 
 @motion_bp.route("/stop")
 def stop():
+    for cancel in jog_cancels.values():
+        cancel.set()
     if cancel_goto() is not None:
         return "OK"
     release_all()

@@ -102,7 +102,7 @@
                     Z: <span id="nav-pos-z">+0</span>
                 </div>
                 <div class="stage-pos-limits">
-                    Limits: X [<span id="nav-lim-x">-1800, 9400</span>] · Y [<span id="nav-lim-y">-1200, 6500</span>]
+                    Navigation limits: X [<span id="nav-lim-x">-1800, 9400</span>] · Y [<span id="nav-lim-y">-1200, 6500</span>]
                 </div>
                 <div class="nav-step-row">
                     <label class="nav-step-label" for="nav-tap-steps">Motor steps</label>
@@ -115,9 +115,8 @@
                     <button type="button" class="nav-step-preset" data-steps="50">50</button>
                     <button type="button" class="nav-step-preset" data-steps="70">70</button>
                     <button type="button" class="nav-step-preset" data-steps="100">100</button>
-                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark">Zero XY (0,0)</button>
                 </div>
-                <p id="nav-step-help">Each tap or hold repeat uses the selected number of motor steps. Distance per step requires calibration for each axis.</p>
+                <p id="nav-step-help">Manual XY arrows can move beyond the navigation limits. Each tap or hold repeat uses the selected number of motor steps.</p>
             </div>
 
         </div>
@@ -264,6 +263,11 @@
             </div>
 
             <!-- 2x3 Well Bookmark Grid (Top row first, matching physical plate) -->
+            <details class="focus-advanced">
+                <summary>Advanced: XY calibration</summary>
+                <p>Center the bottom-left well in the live view, then use Zero XY to mark this position as (0, 0) without moving the stage.</p>
+                <button type="button" id="btn-nav-zero">Zero XY (0,0)</button>
+            </details>
             <div id="nav-bookmark-grid">
                 <!-- Populated dynamically by updateNavUI() -->
             </div>
