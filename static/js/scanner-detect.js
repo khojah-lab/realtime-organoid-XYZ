@@ -144,7 +144,6 @@ function renderSchedule(settings) {
     scheduleFields.mode.value = settings.mode || "six_chamber";
     var useWindow = settings.timing !== "interval" && (settings.enabled || settings.start_date ||
         settings.end_date || settings.start !== "00:00" || settings.end !== "23:59");
-    document.getElementById("schedule-advanced").open = !!useWindow;
     scheduleFields.start_date.value = settings.start_date || "";
     scheduleFields.end_date.value = settings.end_date || "";
     scheduleFields.end_date.min = scheduleFields.start_date.value;
@@ -187,6 +186,16 @@ function updateStartLabel() {
         ? "Start scanning every " + n + (n === 1 ? " minute" : " minutes")
         : "Start automatic scans");
 }
+window.addEventListener("pageshow", function() {
+    document.getElementById("schedule-advanced").open = false;
+});
+$("#schedule-clear-window").on("click", function() {
+    ["start_date", "end_date", "start", "end"].forEach(function(name) {
+        scheduleFields[name].value = "";
+    });
+    scheduleFields.end_date.min = "";
+    scheduleFeedback.text("Dates and times cleared. Start automatic scans to use only the interval.");
+});
 $(scheduleFields.interval).on("input", updateStartLabel);
 socket.on("scan_schedule", renderSchedule);
 $(scheduleFields.start_date).on("input", function() {
