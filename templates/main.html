@@ -301,7 +301,7 @@
             <div class="scan-actions-row" role="group" aria-describedby="scan-mode-hint" aria-label="Run one scan">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
                 <button class="scannowbutton secondary-scan-btn" id="scannowbtn" type="button">6-Chamber Single Shot</button>
-                <button id="btn-stop-scan" type="button" hidden>Stop scan</button>
+                <button id="btn-stop-scan" type="button" hidden>Stop manual scan</button>
             </div>
 
             <section class="scan-schedule" aria-labelledby="schedule-title">
@@ -347,8 +347,9 @@
                         <time id="schedule-next-time"></time>
                         <span id="schedule-remaining"></span>
                     </p>
-                    <button type="button" id="schedule-cancel">Cancel automatic scans</button>
                 </div>
+                <div id="scheduled-progress" role="status"></div>
+                <button type="button" id="schedule-cancel" hidden>Stop automatic scanning</button>
                 <span id="schedule-feedback" role="status"></span>
             </section>
 

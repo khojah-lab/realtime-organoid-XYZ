@@ -30,22 +30,34 @@ function showNextScan(iso, label) {
     tick();
 }
 
+var automaticRunActive = false;
+
+function updateAutomaticStop() {
+    var enabled = savedSchedule && savedSchedule.enabled;
+    $("#schedule-cancel").prop("hidden", !enabled && !automaticRunActive)
+        .text(automaticRunActive ? "Stop current scan and cancel schedule" : "Cancel schedule");
+}
+
 // Scan status updates
 function renderScanStatus(msg) {
-    $('#btn-stop-scan').prop('hidden', !msg.running).prop('disabled', !!msg.stopping);
+    automaticRunActive = msg.running && msg.source === "scheduled";
+    updateAutomaticStop();
+    $('#btn-stop-scan').prop('hidden', !msg.running || automaticRunActive).prop('disabled', !!msg.stopping);
     $("#scan_last").text(msg.last_manual_scan || "No scan recorded");
     $("#scheduled-scan-last").text(msg.last_scheduled_scan || "No scan recorded");
     showNextScan(msg.next_scan_iso, msg.next_scan);
-    $("#scan_progress").text(msg.stopping ? "Stopping scan..." : msg.current_step || "");
+    var progress = msg.stopping ? "Stopping scan..." : msg.current_step || "";
+    $("#scan_progress").text(msg.running && !automaticRunActive ? progress : "");
 
     setScanRunning(!!msg.running);
     var circular = msg.running && msg.mode === "circular";
     var sixChamber = msg.running && msg.mode === "six_chamber";
     var modeLabel = circular ? "Circular Scan Well" : sixChamber ? "6-Chamber Single Shot" : "";
-    $("#scan-mode-status").text(modeLabel ? modeLabel + " · " : "");
+    $("#scheduled-progress").text(automaticRunActive ? modeLabel + " · " + progress : "");
+    $("#scan-mode-status").text(modeLabel && !automaticRunActive ? modeLabel + " · " : "");
     $("#scan_box").toggleClass("scan-running", !!msg.running);
-    $("#btn-scan-circular").prop("disabled", !!msg.running).toggleClass("active-scan", !!circular);
-    $("#scannowbtn").prop("disabled", !!msg.running).toggleClass("active-scan", !!sixChamber);
+    $("#btn-scan-circular").prop("disabled", !!msg.running).toggleClass("active-scan", !!circular && !automaticRunActive);
+    $("#scannowbtn").prop("disabled", !!msg.running).toggleClass("active-scan", !!sixChamber && !automaticRunActive);
 }
 
 socket.on('scan_status', renderScanStatus);
@@ -140,6 +152,7 @@ function displayScheduleDate(iso) {
 
 function renderSchedule(settings) {
     savedSchedule = settings;
+    updateAutomaticStop();
     if (!settings.enabled) showNextScan(null);
     scheduleFields.mode.value = settings.mode || "six_chamber";
     var useWindow = settings.timing !== "interval" && (settings.enabled || settings.start_date ||
@@ -147,7 +160,7 @@ function renderSchedule(settings) {
     scheduleFields.start_date.value = settings.start_date || "";
     scheduleFields.end_date.value = settings.end_date || "";
     scheduleFields.end_date.min = scheduleFields.start_date.value;
-    scheduleFields.start.value = useWindow ? settings.start : "";
+    scheduleFields.start.value = useWindow && settings.wait_for_start !== false ? settings.start : "";
     scheduleFields.end.value = useWindow ? settings.end : "";
     scheduleFields.interval.value = settings.interval;
     updateStartLabel();
@@ -182,8 +195,11 @@ function submitSchedule(settings) {
 
 function updateStartLabel() {
     var n = scheduleFields.interval.valueAsNumber;
+    var prefix = "Scan now, then every ";
+    if (scheduleFields.start.value) prefix = "Start at " + scheduleFields.start.value + ", then every ";
+    else if (scheduleFields.start_date.value || scheduleFields.end_date.value || scheduleFields.end.value) prefix = "Start within window, then every ";
     $("#schedule-start").text(scheduleFields.interval.validity.valid
-        ? "Start scanning every " + n + (n === 1 ? " minute" : " minutes")
+        ? prefix + n + (n === 1 ? " minute" : " minutes")
         : "Start automatic scans");
 }
 window.addEventListener("pageshow", function() {
@@ -194,9 +210,10 @@ $("#schedule-clear-window").on("click", function() {
         scheduleFields[name].value = "";
     });
     scheduleFields.end_date.min = "";
+    updateStartLabel();
     scheduleFeedback.text("Dates and times cleared. Start automatic scans to use only the interval.");
 });
-$(scheduleFields.interval).on("input", updateStartLabel);
+$(scheduleForm).on("input", updateStartLabel);
 socket.on("scan_schedule", renderSchedule);
 $(scheduleFields.start_date).on("input", function() {
     scheduleFields.end_date.min = this.value;
@@ -212,6 +229,7 @@ $(scheduleForm).on("submit", function(event) {
     settings.start_date = scheduleFields.start_date.value;
     settings.end_date = scheduleFields.end_date.value;
     if (settings.start_date || settings.end_date || settings.start || settings.end) {
+        settings.wait_for_start = Boolean(settings.start);
         settings.start = settings.start || "00:00";
         settings.end = settings.end || "23:59";
     } else {

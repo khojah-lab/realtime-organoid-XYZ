@@ -70,9 +70,9 @@ def reserve_scan(mode, *, source="manual"):
         return _active_cancel
 
 
-def request_scan_stop():
+def request_scan_stop(source=None):
     with _scan_lock:
-        if _active_cancel is not None:
+        if _active_cancel is not None and (source is None or scan_status["source"] == source):
             _active_cancel.set()
             scan_status["stopping"] = True
         return dict(scan_status)
@@ -374,13 +374,16 @@ def validate_schedule(data):
     if type(minutes) is not int or not 1 <= minutes <= 1440:
         raise ValueError("Interval must be a whole number from 1 to 1440 minutes.")
     settings = dict(enabled=data["enabled"], interval=minutes)
-    if interval_only:
+    if interval_only or "anchor" in data:
         anchor = data.get("anchor")
         if type(anchor) is not int or not 0 <= anchor <= 253402214400:
             raise ValueError("Invalid interval start time.")
-        settings.update(timing="interval", anchor=anchor)
+        settings["anchor"] = anchor
+    if interval_only:
+        settings["timing"] = "interval"
     else:
         settings.update(start=data["start"], end=data["end"])
+        settings["wait_for_start"] = data.get("wait_for_start", True) is True
     for key in ("start_date", "end_date"):
         value = data.get(key)
         if value not in (None, ""):
@@ -410,32 +413,105 @@ def get_schedule():
         return dict(_schedule)
 
 
+def window_day(settings, local):
+    """Identify the daily window containing this local time, including overnight windows."""
+    date = local.date()
+    clock = local.strftime("%H:%M")
+    start, end = settings["start"], settings["end"]
+    if not settings.get("start_date", "") <= date.isoformat() <= settings.get("end_date", "9999-12-31"):
+        return None
+    if start <= clock <= end or (start > end and clock >= start):
+        return date
+    if start > end and clock <= end:
+        previous = date - datetime.timedelta(days=1)
+        if previous.isoformat() >= settings.get("start_date", ""):
+            return previous
+    return None
+
+
+def launch_scheduled_scan(settings):
+    if settings["mode"] == "circular":
+        result, status = start_circular_scan(settings["circular"], source="scheduled")
+        if status != 200:
+            raise ValueError(result["error"])
+    else:
+        cancel = reserve_scan("six_chamber", source="scheduled")
+        if cancel is None:
+            raise ValueError("A scan is already running.")
+        try:
+            threading.Thread(target=_run_reserved_scan, args=(cancel,), daemon=True).start()
+        except RuntimeError:
+            finish_scan_status(cancel, "Scan could not start.")
+            raise
+
+
+def persist_schedule(settings):
+    _schedule_file.parent.mkdir(parents=True, exist_ok=True)
+    temp = _schedule_file.with_suffix(".tmp")
+    temp.write_text(json.dumps(settings), encoding="utf8")
+    temp.replace(_schedule_file)
+
+
 def save_schedule(data):
     global _schedule
-    if isinstance(data, dict) and data.get("timing") == "interval":
-        data = dict(data, anchor=int(time.time()))
+    now = datetime.datetime.now(LA_TZ)
+    if isinstance(data, dict):
+        data = dict(data, anchor=int(now.timestamp()))
     settings = validate_schedule(data)
-    if settings["enabled"] and settings.get("end_date") and next_scan_time(settings, datetime.datetime.now(LA_TZ)) is None:
+    immediate = settings["enabled"] and (
+        settings.get("timing") == "interval" or window_day(settings, now) is not None
+    )
+    if settings["enabled"] and settings.get("wait_for_start"):
+        # Find the first eligible occurrence of the selected clock time.
+        first_window = dict(settings, end=settings["start"])
+        first_window.pop("anchor", None)
+        first = next_scan_time(first_window, now)
+        if first is None:
+            raise ValueError("The selected start time has passed for all selected dates.")
+        settings["anchor"] = int(first.timestamp())
+        immediate = False
+    if settings["enabled"] and not immediate and next_scan_time(settings, now) is None:
         raise ValueError("No scan start remains within the selected dates and times.")
     with _schedule_changed:
-        _schedule_file.parent.mkdir(parents=True, exist_ok=True)
-        temp = _schedule_file.with_suffix(".tmp")
-        temp.write_text(json.dumps(settings), encoding="utf8")
-        temp.replace(_schedule_file)
+        if settings["enabled"] and _schedule["enabled"]:
+            raise ValueError("An automatic schedule is already enabled.")
+        persist_schedule(settings)
+        if immediate:
+            try:
+                launch_scheduled_scan(settings)
+            except Exception:
+                persist_schedule(_schedule)
+                raise
+        elif not settings["enabled"]:
+            request_scan_stop(source="scheduled")
         _schedule = settings
         _schedule_changed.notify_all()
-    emit_socket_event("scan_schedule", settings)
+        emit_socket_event("scan_schedule", settings)
     return settings
 
 
 def next_scan_time(settings, now):
     if not settings["enabled"]:
         return None
+    if settings.get("wait_for_start") and settings.get("anchor", 0) > now.timestamp():
+        return datetime.datetime.fromtimestamp(settings["anchor"], LA_TZ)
     if settings.get("timing") == "interval":
         period = settings["interval"] * 60
         anchor = settings["anchor"]
         slot = max(1, int((now.timestamp() - anchor) // period) + 1)
         return datetime.datetime.fromtimestamp(anchor + slot * period, LA_TZ)
+
+    # On the activation day, space slots from the actual first scan.
+    initial_window = None
+    if "anchor" in settings:
+        anchor = settings["anchor"]
+        initial_window = window_day(settings, datetime.datetime.fromtimestamp(anchor, LA_TZ))
+        if initial_window:
+            period = settings["interval"] * 60
+            slot = max(1, int((now.timestamp() - anchor) // period) + 1)
+            due = datetime.datetime.fromtimestamp(anchor + slot * period, LA_TZ)
+            if window_day(settings, due) == initial_window:
+                return due
 
     def minutes(value):
         hour, minute = map(int, value.split(":"))
@@ -460,7 +536,8 @@ def next_scan_time(settings, now):
             continue
         offset = (minute - start) % 1440
         if offset <= span and offset % settings["interval"] == 0:
-            return local
+            if initial_window is None or window_day(settings, local) != initial_window:
+                return local
 
 
 def _scan_scheduler_loop():
@@ -481,17 +558,11 @@ def _scan_scheduler_loop():
                 continue
             if _schedule_changed.wait(timeout=max(0, due.timestamp() - time.time())):
                 continue
-            if _schedule["mode"] == "circular":
-                try:
-                    result, status = start_circular_scan(_schedule["circular"], source="scheduled")
-                    if status != 200:
-                        log_event(f"Scheduled circular scan skipped: {result['error']}")
-                except Exception as exc:
-                    log_event(f"Scheduled circular scan failed: {exc!r}")
-                continue
-            cancel = reserve_scan("six_chamber", source="scheduled")
-        if cancel is not None:
-            threading.Thread(target=_run_reserved_scan, args=(cancel,), daemon=True).start()
+            try:
+                launch_scheduled_scan(_schedule)
+            except Exception as exc:
+                log_event(f"Scheduled scan skipped: {exc!r}")
+
 
 
 def start_scan_scheduler():
