@@ -246,8 +246,12 @@
             <summary>Autofocus</summary>
             <fieldset id="focus-actions" disabled>
                 <legend>Focus height</legend>
-                <button type="button" id="focus-save">Save current height</button>
                 <button type="button" id="focus-recall" disabled>Move to saved height</button>
+                <details class="focus-advanced">
+                    <summary>Advanced</summary>
+                    <p>After focusing manually, save the current height as the position Autofocus will return to.</p>
+                    <button type="button" id="focus-save">Save current height</button>
+                </details>
             </fieldset>
             <span id="focus-status" role="status"></span>
         </details>
