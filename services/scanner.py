@@ -29,12 +29,16 @@ from services import storage_manager
 from services.telemetry import Timer, emit_socket_event, log_event
 
 # ── Scan Status State (shared with UI) ────────────────────────
-_last_scan_file = BASE_DIR / "state" / "last_scan.txt"
+_scan_record_dir = BASE_DIR / "state"
+_scan_record_files = {
+    "manual": _scan_record_dir / "last_manual_scan.txt",
+    "scheduled": _scan_record_dir / "last_scheduled_scan.txt",
+}
 
 
-def _load_last_scan():
+def _load_last_scan(path):
     try:
-        return _last_scan_file.read_text(encoding="utf8").strip() or "No scan recorded"
+        return path.read_text(encoding="utf8").strip() or "No scan recorded"
     except FileNotFoundError:
         return "No scan recorded"
     except (OSError, UnicodeError) as exc:
@@ -44,7 +48,9 @@ def _load_last_scan():
 
 scan_status = {
     "running":      False,
-    "last_scan":    _load_last_scan(),
+    "last_scan":    _load_last_scan(_scan_record_dir / "last_scan.txt"),
+    "last_manual_scan": _load_last_scan(_scan_record_files["manual"]),
+    "last_scheduled_scan": _load_last_scan(_scan_record_files["scheduled"]),
     "next_scan":    "Calculating..." if AUTO_SCAN_ENABLED else "—",
     "current_step": "",
 }
@@ -54,13 +60,13 @@ _scheduler_started = False
 _scan_lock = threading.Lock()
 
 
-def reserve_scan(mode):
+def reserve_scan(mode, *, source="manual"):
     global _active_cancel
     with _scan_lock:
         if _active_cancel is not None:
             return None
         _active_cancel = threading.Event()
-        scan_status.update(running=True, mode=mode, stopping=False, current_step="Starting scan...")
+        scan_status.update(running=True, mode=mode, source=source, stopping=False, current_step="Starting scan...")
         return _active_cancel
 
 
@@ -82,14 +88,17 @@ def finish_scan_status(cancel, stopped_message, result="Failed"):
         timestamp = datetime.datetime.now(LA_TZ).strftime("%Y-%m-%d %H:%M %Z")
         record = f"{timestamp} · {mode} · {result}"
         scan_status["last_scan"] = record
-        try:
-            _last_scan_file.parent.mkdir(parents=True, exist_ok=True)
-            temp = _last_scan_file.with_suffix(".tmp")
-            temp.write_text(record, encoding="utf8")
-            temp.replace(_last_scan_file)
-        except OSError as exc:
-            print(f"[SCAN] Could not persist last scan: {exc}")
-        scan_status.update(running=False, mode=None, stopping=False)
+        source = scan_status["source"]
+        scan_status[f"last_{source}_scan"] = record
+        for path in (_scan_record_files[source], _scan_record_dir / "last_scan.txt"):
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temp = path.with_suffix(".tmp")
+                temp.write_text(record, encoding="utf8")
+                temp.replace(path)
+            except OSError as exc:
+                print(f"[SCAN] Could not persist {path.name}: {exc}")
+        scan_status.update(running=False, mode=None, source=None, stopping=False)
         _active_cancel = None
         emit_socket_event("scan_status", dict(scan_status))
 
@@ -222,7 +231,7 @@ def _run_scan(drive_session, cancel) -> None:
                 scan_status["current_step"] = ""
 
 
-def start_circular_scan(data, *, remember_geometry=False):
+def start_circular_scan(data, *, remember_geometry=False, source="manual"):
     if get_scan_status()["running"]:
         return {"error": "A scan is already running"}, 409
 
@@ -260,7 +269,7 @@ def start_circular_scan(data, *, remember_geometry=False):
     if not tiles:
         return {"error": "No tiles fit within circle and soft limits"}, 400
 
-    cancel = reserve_scan("circular")
+    cancel = reserve_scan("circular", source=source)
     if cancel is None:
         return {"error": "A scan is already running"}, 409
 
@@ -458,13 +467,13 @@ def _scan_scheduler_loop():
                 continue
             if _schedule["mode"] == "circular":
                 try:
-                    result, status = start_circular_scan(_schedule["circular"])
+                    result, status = start_circular_scan(_schedule["circular"], source="scheduled")
                     if status != 200:
                         log_event(f"Scheduled circular scan skipped: {result['error']}")
                 except Exception as exc:
                     log_event(f"Scheduled circular scan failed: {exc!r}")
                 continue
-            cancel = reserve_scan("six_chamber")
+            cancel = reserve_scan("six_chamber", source="scheduled")
         if cancel is not None:
             threading.Thread(target=_run_reserved_scan, args=(cancel,), daemon=True).start()
 

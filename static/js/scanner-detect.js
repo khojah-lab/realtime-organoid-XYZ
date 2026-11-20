@@ -33,7 +33,8 @@ function showNextScan(iso, label) {
 // Scan status updates
 function renderScanStatus(msg) {
     $('#btn-stop-scan').prop('hidden', !msg.running).prop('disabled', !!msg.stopping);
-    $("#scan_last").text(msg.last_scan || "No scan recorded");
+    $("#scan_last").text(msg.last_manual_scan || "No scan recorded");
+    $("#scheduled-scan-last").text(msg.last_scheduled_scan || "No scan recorded");
     showNextScan(msg.next_scan_iso, msg.next_scan);
     $("#scan_progress").text(msg.stopping ? "Stopping scan..." : msg.current_step || "");
 

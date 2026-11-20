@@ -295,7 +295,7 @@
                 </div>
                 <small>Distances are in motor steps. Smaller spacing takes more photos within the circle.</small>
             </fieldset>
-            <div>Last scan: <span id="scan_last">Loading…</span></div>
+            <div>Last manual scan: <span id="scan_last">Loading…</span></div>
             <div role="status"><strong id="scan-mode-status"></strong><span id="scan_progress"></span></div>
             <p class="scan-mode-hint" id="scan-mode-hint">Circular Scan Well takes multiple photos in one well. Single Shot takes one photo per well across all six.</p>
             <div class="scan-actions-row" role="group" aria-describedby="scan-mode-hint" aria-label="Run one scan">
@@ -306,6 +306,7 @@
 
             <section class="scan-schedule" aria-labelledby="schedule-title">
                 <h3 class="scan-section-title" id="schedule-title">Schedule automatic scans</h3>
+                <div>Last scheduled scan: <span id="scheduled-scan-last">Loading…</span></div>
                 <form id="scan-schedule-form">
                     <fieldset disabled>
                         <label>Scan mode
