@@ -60,24 +60,17 @@ $(".focusminus").click(function() {
     s.val(v); $("#focus_text").html(v); fetchdata_zoom_focus();
 });
 
-$("#stage-autofocus").click(function(event) {
-    var button = $(this);
-    var saved = button.data("saved");
-    var saving = !saved || event.shiftKey;
-    if (saving) {
-        var prompt = saved ? "Replace the saved focus with the current Z height?"
-                           : "Is the live image in focus? Save this height for Autofocus?";
-        if (!window.confirm(prompt)) return;
-    }
-    button.data("busy", true).prop("disabled", true);
-    $("#focus-status").text(saving ? "Saving focus height..." : "Returning to focus...");
-    $.post("/nav/focus/" + (saving ? "set" : "return")).done(function(state) {
+$("#focus-save, #focus-recall").click(function() {
+    var saving = this.id === "focus-save";
+    var actions = $("#focus-actions").data("busy", true).prop("disabled", true);
+    $("#focus-status").text(saving ? "Saving focus height..." : "Moving to saved height...");
+    $.post(saving ? "/nav/focus/set" : "/nav/focus/return").done(function(state) {
         updateNavUI(state);
-        $("#focus-status").text(saving ? "Focus height saved." : "At saved focus height.");
+        $("#focus-status").text(saving ? "Current height saved." : "At saved focus height.");
     }).fail(function(xhr) {
         $("#focus-status").text((xhr.responseJSON || {}).error || "Focus action unconfirmed.");
     }).always(function() {
-        button.data("busy", false).prop("disabled", false);
+        actions.data("busy", false).prop("disabled", false);
     });
 });
 

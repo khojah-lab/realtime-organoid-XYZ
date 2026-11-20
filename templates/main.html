@@ -242,11 +242,15 @@
         </div>
 
         <br>
-        <div aria-label="Z focus controls">
-            <button type="button" id="stage-autofocus" aria-describedby="focus-hint" disabled>Autofocus</button>
-            <small id="focus-hint">Shift + click Autofocus to save a new focus height.</small>
+        <details id="stage-autofocus">
+            <summary>Autofocus</summary>
+            <fieldset id="focus-actions" disabled>
+                <legend>Focus height</legend>
+                <button type="button" id="focus-save">Save current height</button>
+                <button type="button" id="focus-recall" disabled>Move to saved height</button>
+            </fieldset>
             <span id="focus-status" role="status"></span>
-        </div>
+        </details>
 
         <!-- ── STAGE NAVIGATION & 6-WELL BOOKMARKS ── -->
         <div class="scan-box" id="nav_box">
