@@ -10,6 +10,38 @@
     max-width: 560px;
 }
 
+.xy-calibration h3 {
+    margin: 0 0 8px;
+    color: #1a237e;
+    font-size: 1.15em;
+}
+
+.xy-calibration summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid #99aac2;
+    border-radius: 4px;
+    background: white;
+    color: #254569;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.xy-calibration summary::-webkit-details-marker { display: none; }
+
+.xy-calibration summary::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border: solid currentColor;
+    border-width: 0 2px 2px 0;
+    transform: rotate(-45deg);
+}
+
+.xy-calibration details[open] > summary::before { transform: rotate(45deg); }
+
 .scan-box b {
     color: #1a237e;
 }

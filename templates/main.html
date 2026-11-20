@@ -255,6 +255,15 @@
             <span id="focus-status" role="status"></span>
         </details>
 
+        <section class="scan-box xy-calibration" aria-labelledby="xy-origin-heading">
+            <h3 id="xy-origin-heading">XY origin</h3>
+            <details>
+                <summary>Advanced calibration</summary>
+                <p>Center the bottom-left well in the live view, then select Zero XY to mark its center as (0, 0) without moving the stage.</p>
+                <button type="button" id="btn-nav-zero">Zero XY (0,0)</button>
+            </details>
+        </section>
+
         <!-- ── STAGE NAVIGATION & 6-WELL BOOKMARKS ── -->
         <div class="scan-box" id="nav_box">
             <div class="nav-box-header">
@@ -263,11 +272,6 @@
             </div>
 
             <!-- 2x3 Well Bookmark Grid (Top row first, matching physical plate) -->
-            <details class="focus-advanced">
-                <summary>Advanced: XY calibration</summary>
-                <p>Center the bottom-left well in the live view, then use Zero XY to mark this position as (0, 0) without moving the stage.</p>
-                <button type="button" id="btn-nav-zero">Zero XY (0,0)</button>
-            </details>
             <div id="nav-bookmark-grid">
                 <!-- Populated dynamically by updateNavUI() -->
             </div>
