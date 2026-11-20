@@ -36,15 +36,26 @@
         const end = times.reduce((a, b) => Math.max(a, b));
         const span = end - start;
         const rows = data.observations.filter(row => row[metric] != null);
-        const max = Math.max(1, Math.ceil(rows.reduce((m,row) => Math.max(m,row[metric]),0)));
         const x = row => span ? left + (Date.parse(row.timestamp)-start)/span*(right-left) : (left+right)/2;
-        const y = row => bottom - row[metric]/max*(bottom-top);
-        const ticks = metric === "count" ? Math.min(max,4) : 4;
-        for (let i=0; i<=ticks; i++) {
-            const value = metric === "count" ? Math.round(max*i/ticks) : max*i/ticks;
-            const pos = bottom-value/max*(bottom-top);
+        const values = rows.map(row => row[metric]);
+        const low = values.length ? values.reduce((a,b) => Math.min(a,b)) : 0;
+        const high = values.length ? values.reduce((a,b) => Math.max(a,b)) : 0;
+        const isCount = metric === "count";
+        const padding = Math.max((high-low)*0.08, isCount ? 1 : 0.1);
+        const floor = Math.max(0, low-padding);
+        const ceiling = high+padding;
+        const targetStep = Math.max((ceiling-floor)/5, isCount ? 1 : 0.01);
+        const magnitude = 10 ** Math.floor(Math.log10(targetStep));
+        const step = [1,2,5,10].find(n => n*magnitude >= targetStep)*magnitude;
+        const firstTick = Math.floor(floor/step);
+        const lastTick = Math.ceil(ceiling/step);
+        const scaleY = value => bottom-(value/step-firstTick)/(lastTick-firstTick)*(bottom-top);
+        const y = row => scaleY(row[metric]);
+        for (let tick=firstTick; tick<=lastTick; tick++) {
+            const value = tick*step;
+            const pos = scaleY(value);
             svgNode(svg,"line",{x1:left,x2:right,y1:pos,y2:pos,stroke:"#e2e8ef"});
-            svgNode(svg,"text",{x:left-7,y:pos+4,"text-anchor":"end","font-size":11},Number(value.toFixed(1)));
+            svgNode(svg,"text",{x:left-7,y:pos+4,"text-anchor":"end","font-size":11},Number(value.toFixed(Math.max(0,-Math.floor(Math.log10(step))))));
         }
         const dateFmt = new Intl.DateTimeFormat("en-US", {timeZone:zone, month:"short", day:"numeric"});
         const showDate = dateFmt.format(start) !== dateFmt.format(end) || span >= 86400000;
