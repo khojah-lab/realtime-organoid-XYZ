@@ -1,7 +1,7 @@
 // =========================
 // STAGE NAVIGATION, BOOKMARKS & MOTION CONTROLS
 // =========================
-var currentJogStep = 250;
+var tapStepsInput = document.getElementById("nav-tap-steps");
 var WELL_GRID_ORDER = [
     "top_left", "top_middle", "top_right",
     "bottom_left", "bottom_middle", "bottom_right"
@@ -14,6 +14,11 @@ function formatSigned(val) {
 
 function updateNavUI(state) {
     if (!state) return;
+    if (typeof state.focus_saved === "boolean") {
+        var actions = $("#focus-actions");
+        actions.prop("disabled", !!actions.data("busy"));
+        $("#focus-recall").prop("disabled", !state.focus_saved);
+    }
     if (state.current_position) {
         $("#nav-pos-x").text(formatSigned(state.current_position.x));
         $("#nav-pos-y").text(formatSigned(state.current_position.y));
@@ -74,12 +79,6 @@ socket.on('nav_state', function(state) {
     updateNavUI(state);
 });
 
-$(document).on("click", ".nav-step-btn", function() {
-    currentJogStep = parseInt($(this).data("steps"), 10) || 250;
-    $(".nav-step-btn").removeClass("active-step");
-    $(this).addClass("active-step");
-});
-
 $("#btn-nav-zero").click(function() {
     $.post("/nav/zero", function(state) {
         updateNavUI(state);
@@ -88,6 +87,7 @@ $("#btn-nav-zero").click(function() {
 });
 
 $(document).on("click", ".bm-go-btn", function() {
+    $("#nav-stop-status").text("");
     var name = $(this).data("name");
     $.ajax({
         url: "/nav/goto",
@@ -120,7 +120,18 @@ $(document).on("click", ".bm-set-btn", function() {
     });
 });
 
+$("#btn-nav-stop").click(function() {
+    var status = $("#nav-stop-status").text("Stopping...");
+    $.post("/nav/stop").done(function(result) {
+        var messages = {idle: "No active Go move.", stopped: "Move stopped.", stopping: "Stop requested."};
+        status.text(messages[result.status]);
+    }).fail(function() {
+        status.text("Stop unconfirmed. Retry.");
+    });
+});
+
 $("#btn-nav-goto-xy").click(function() {
+    $("#nav-stop-status").text("");
     var tx = parseInt($("#nav-goto-x").val(), 10) || 0;
     var ty = parseInt($("#nav-goto-y").val(), 10) || 0;
     $.ajax({
@@ -166,12 +177,27 @@ $("#scan-unlock-btn").click(function() {
     }
 });
 
-function moveParams(isRepeat) {
-    var params = {};
+var stepPresets = document.querySelectorAll(".nav-step-preset");
+
+function updateStepPresets() {
+    stepPresets.forEach(function(button) {
+        button.setAttribute("aria-pressed", Number(button.dataset.steps) === tapStepsInput.valueAsNumber);
+    });
+}
+
+stepPresets.forEach(function(button) {
+    button.addEventListener("click", function() {
+        tapStepsInput.value = button.dataset.steps;
+        updateStepPresets();
+    });
+});
+tapStepsInput.addEventListener("input", updateStepPresets);
+updateStepPresets();
+
+function moveParams(steps, isRepeat) {
+    var params = { steps: steps };
     if (isRepeat) {
         params.repeat = 1;
-    } else {
-        params.steps = currentJogStep;
     }
     if (scanOverride) params.override = 1;
     return params;
@@ -179,6 +205,7 @@ function moveParams(isRepeat) {
 
 function bindHoldToMove(buttonId, url) {
     var repeatTimer = null;
+    var pressSteps;
     var pressStartMs = 0;
     var burstsAccepted = 0;   // responses of "OK"; the server answers "BUSY" mid-burst
     var requestsInFlight = 0;
@@ -186,7 +213,7 @@ function bindHoldToMove(buttonId, url) {
 
     function sendMove(isRepeat) {
         requestsInFlight++;
-        $.get(url, moveParams(isRepeat))
+        $.get(url, moveParams(pressSteps, isRepeat))
             .done(function(response) { if (response === "OK") burstsAccepted++; })
             .always(function() {
                 requestsInFlight--;
@@ -215,6 +242,8 @@ function bindHoldToMove(buttonId, url) {
 
     $(buttonId).on("pointerdown", function(event) {
         if (event.button !== 0 || repeatTimer !== null) return;
+        if (!tapStepsInput.reportValidity()) return;
+        pressSteps = tapStepsInput.valueAsNumber;
         pressStartMs = Date.now();
         burstsAccepted = 0;
         sendMove(false);
@@ -224,7 +253,7 @@ function bindHoldToMove(buttonId, url) {
     $(window).on("pointerup pointercancel blur", stopRepeating);
     // Keyboard activation (Enter/Space) has no pointer events; detail is 0 for it
     $(buttonId).on("click", function(event) {
-        if (event.detail === 0) $.get(url, moveParams(false));
+        if (event.detail === 0 && tapStepsInput.reportValidity()) $.get(url, moveParams(tapStepsInput.valueAsNumber, false));
     });
 }
 

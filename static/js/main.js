@@ -10,7 +10,7 @@ window.addEventListener('load', function() {
             res.logs.forEach(function(item) { appendLogRow(item, false); });
         }
     });
-    $.getJSON('/scan_status', function(data) { setScanRunning(!!data.running); });
+    $.getJSON('/scan_status', renderScanStatus);
     $.getJSON('/hardware_status', function(data) {
         updateHardwareBanner(data.disconnected);
         updateCameraWatchdog(data.camera);
@@ -28,13 +28,6 @@ window.addEventListener('load', function() {
 
     // Poll scan status every 30s in case socket misses an update
     setInterval(function() {
-        $.getJSON('/scan_status', function(data) {
-            $("#scan_last").text(data.last_scan || "Never");
-            $("#scan_next").text(data.next_scan || "—");
-            $("#scan_progress").text(data.current_step || "");
-            if (data.next_scan && data.next_scan !== "Calculating..." && data.next_scan !== "—") {
-                updateCountdown(data.next_scan);
-            }
-        });
+        $.getJSON('/scan_status', renderScanStatus);
     }, 30000);
 });

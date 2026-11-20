@@ -28,7 +28,7 @@ except ImportError:
 from config import IMAGE_DIR
 from services.cloud_storage import BUCKET, get_client, object_key
 from services.detection import run_detection
-from services.scanner import get_scan_status, run_scan
+from services.scanner import get_scan_status, run_scan, get_schedule, save_schedule
 
 analysis_bp = Blueprint("analysis", __name__)
 
@@ -49,6 +49,18 @@ def scan_now():
     """Trigger an immediate 6-well automated scan in a background thread."""
     threading.Thread(target=run_scan, daemon=True).start()
     return "OK"
+
+
+@analysis_bp.route("/scan_schedule", methods=["GET", "POST"])
+def scan_schedule():
+    if request.method == "GET":
+        return jsonify(get_schedule())
+    try:
+        return jsonify(save_schedule(request.get_json(silent=True)))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except OSError:
+        return jsonify(error="Could not save schedule to disk."), 500
 
 
 @analysis_bp.route("/scan_status")

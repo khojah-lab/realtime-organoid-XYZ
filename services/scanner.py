@@ -8,6 +8,8 @@ real-time UI status updates.
 """
 
 import datetime
+import json
+import re
 import threading
 import time
 import cv2
@@ -15,28 +17,90 @@ import pytz
 
 from config import (
     AUTO_SCAN_ENABLED,
+    BASE_DIR,
     LA_TZ,
     CAPTURE_JPEG_QUALITY,
     CHAMBER_NAMES,
-    CHAMBER_MOVEMENTS,
-    RETURN_HOME_MOVEMENTS,
 )
 from hardware.camera import capture_fresh_bgr_frame
 from hardware.gpio_control import set_led
-from hardware.stepper_motors import move_platform
+from services.stage_navigator import get_navigator
 from services import storage_manager
 from services.telemetry import Timer, emit_socket_event, log_event
 
 # ── Scan Status State (shared with UI) ────────────────────────
+_scan_record_dir = BASE_DIR / "state"
+_scan_record_files = {
+    "manual": _scan_record_dir / "last_manual_scan.txt",
+    "scheduled": _scan_record_dir / "last_scheduled_scan.txt",
+}
+
+
+def _load_last_scan(path):
+    try:
+        return path.read_text(encoding="utf8").strip() or "No scan recorded"
+    except FileNotFoundError:
+        return "No scan recorded"
+    except (OSError, UnicodeError) as exc:
+        print(f"[SCAN] Could not load last scan: {exc}")
+        return "Scan history unavailable"
+
+
 scan_status = {
     "running":      False,
-    "last_scan":    "Never",
+    "last_scan":    _load_last_scan(_scan_record_dir / "last_scan.txt"),
+    "last_manual_scan": _load_last_scan(_scan_record_files["manual"]),
+    "last_scheduled_scan": _load_last_scan(_scan_record_files["scheduled"]),
     "next_scan":    "Calculating..." if AUTO_SCAN_ENABLED else "—",
     "current_step": "",
 }
 
+_active_cancel = None
 _scheduler_started = False
 _scan_lock = threading.Lock()
+
+
+def reserve_scan(mode, *, source="manual"):
+    global _active_cancel
+    with _scan_lock:
+        if _active_cancel is not None:
+            return None
+        _active_cancel = threading.Event()
+        scan_status.update(running=True, mode=mode, source=source, stopping=False, current_step="Starting scan...")
+        return _active_cancel
+
+
+def request_scan_stop(source=None):
+    with _scan_lock:
+        if _active_cancel is not None and (source is None or scan_status["source"] == source):
+            _active_cancel.set()
+            scan_status["stopping"] = True
+        return dict(scan_status)
+
+
+def finish_scan_status(cancel, stopped_message, result="Failed"):
+    global _active_cancel
+    with _scan_lock:
+        if cancel.is_set():
+            scan_status["current_step"] = stopped_message
+            result = "Stopped"
+        mode = "Circular Scan Well" if scan_status["mode"] == "circular" else "6-Chamber Single Shot"
+        timestamp = datetime.datetime.now(LA_TZ).strftime("%Y-%m-%d %H:%M %Z")
+        record = f"{timestamp} · {mode} · {result}"
+        scan_status["last_scan"] = record
+        source = scan_status["source"]
+        scan_status[f"last_{source}_scan"] = record
+        for path in (_scan_record_files[source], _scan_record_dir / "last_scan.txt"):
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temp = path.with_suffix(".tmp")
+                temp.write_text(record, encoding="utf8")
+                temp.replace(path)
+            except OSError as exc:
+                print(f"[SCAN] Could not persist {path.name}: {exc}")
+        scan_status.update(running=False, mode=None, source=None, stopping=False)
+        _active_cancel = None
+        emit_socket_event("scan_status", dict(scan_status))
 
 
 def get_scan_status() -> dict:
@@ -61,12 +125,18 @@ def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
 
 
 def run_scan() -> None:
-    if not _scan_lock.acquire(blocking=False):
+    cancel = reserve_scan("six_chamber")
+    if cancel is None:
         return
+    _run_reserved_scan(cancel)
+
+
+def _run_reserved_scan(cancel):
+    result = "Failed"
     sid = None
     try:
         sid = storage_manager.begin_scan()
-        _run_scan(sid)
+        result = _run_scan(sid, cancel)
     except Exception as exc:
         scan_status["current_step"] = str(exc)
         emit_socket_event("scan_status", scan_status)
@@ -75,15 +145,32 @@ def run_scan() -> None:
         try:
             if sid:
                 storage_manager.finish_scan(sid)
+        except Exception:
+            result = "Failed"
+            raise
         finally:
-            _scan_lock.release()
+            finish_scan_status(cancel, "Six-chamber scan stopped.", result)
 
 
-def _run_scan(drive_session) -> None:
+def _run_scan(drive_session, cancel) -> None:
     """Execute a full 6-chamber automated scan while keeping the camera stream active."""
-    if scan_status["running"]:
-        print("[SCAN] Already running, skipping.")
-        return
+    nav = get_navigator()
+    if nav.state["position_uncertain"]:
+        raise ValueError("Stage position uncertain. Align to a known well and Sync before scanning.")
+    # Capture filenames use "center"; navigation bookmarks use "middle".
+    targets = {name: tuple(nav.bookmarks[name.replace("_center", "_middle")])
+               for name in CHAMBER_NAMES}
+
+    def move_to_chamber(name):
+        x, y = targets[name]
+        scan_status["current_step"] = f"Moving to {name} ({x}, {y})..."
+        emit_socket_event("scan_status", scan_status)
+        pos = nav.move_to(x, y, cancel=cancel)
+        if cancel.is_set():
+            return False
+        if (pos["x"], pos["y"]) != (x, y):
+            raise ValueError(f"Could not reach {name} at ({x}, {y}). Check the bookmark and stage limits.")
+        return not cancel.wait(1.0)
 
     log_event("SCAN_START")
     scan_status["running"]      = True
@@ -104,18 +191,15 @@ def _run_scan(drive_session) -> None:
             print("=" * 45)
 
             for i, chamber in enumerate(CHAMBER_NAMES):
-                if CHAMBER_MOVEMENTS[i] is not None:
-                    axis, direction, steps = CHAMBER_MOVEMENTS[i]
-                    scan_status["current_step"] = f"Moving to {chamber}..."
-                    emit_socket_event("scan_status", scan_status)
-                    print(f"  Moving {axis.upper()} {direction} {steps} steps...")
-                    move_platform(axis, direction, steps)
-                    time.sleep(1.0)
+                if cancel.is_set() or not move_to_chamber(chamber):
+                    return
 
                 total = len(CHAMBER_NAMES)
                 scan_status["current_step"] = f"Capturing {chamber} ({i+1}/{total})..."
                 emit_socket_event("scan_status", scan_status)
                 print(f"\n  Chamber {i+1}/{total}: {chamber}")
+                if cancel.is_set():
+                    return
                 fname = take_scan_photo(chamber, drive_session)
 
                 if fname:
@@ -134,53 +218,364 @@ def _run_scan(drive_session) -> None:
             scan_status["current_step"] = "Returning to start..."
             emit_socket_event("scan_status", scan_status)
 
-            try:
-                for axis, direction, steps in RETURN_HOME_MOVEMENTS:
-                    print(f"  Moving {axis.upper()} {direction} {steps} steps...")
-                    move_platform(axis, direction, steps)
-                    time.sleep(1.0)
-                print("  ✓ Returned to bottom_right\n")
-            except Exception as e:
-                print(f"  ✗ Return home error: {e}")
+            if move_to_chamber("bottom_right"):
+                print("  Returned to bottom_right")
+            return f"{len(captured_files)}/{len(CHAMBER_NAMES)} photos saved"
 
         finally:
             set_led(False)
             emit_socket_event("led_state", {"state": False})
             print("  [LED] OFF after scan\n")
 
-            now = datetime.datetime.now(LA_TZ)
-            scan_status["running"]      = False
-            scan_status["last_scan"]    = now.strftime("%Y-%m-%d %H:%M")
-            scan_status["current_step"] = ""
-            emit_socket_event("scan_status", scan_status)
-            print(f"  ✓ Scan complete at {scan_status['last_scan']}\n")
+            if not cancel.is_set():
+                scan_status["current_step"] = ""
 
 
+def start_circular_scan(data, *, remember_geometry=False, source="manual"):
+    if get_scan_status()["running"]:
+        return {"error": "A scan is already running"}, 409
 
+    nav = get_navigator()
+    if nav.state.get("position_uncertain"):
+        log_event("SCAN_REJECTED        Stage position uncertain; zero or sync required")
+        return {
+            "error": "Stage position is marked UNCERTAIN after an interrupted move. Zero or Sync first."
+        }, 409
 
-def _scan_scheduler_loop() -> None:
-    """Background loop that triggers `run_scan()` at the top of every hour."""
-    while True:
-        now = datetime.datetime.now(LA_TZ)
-        next_hr = (now + datetime.timedelta(hours=1)).replace(
-            minute=0, second=0, microsecond=0
-        )
-        wait = (next_hr - now).total_seconds()
-        scan_status["next_scan"] = next_hr.strftime("%Y-%m-%d %H:%M")
+    well_name = (data.get("well") or "bottom_middle").strip()
+    if well_name not in nav.bookmarks:
+        return {"error": f"Unknown bookmark '{well_name}'"}, 400
+
+    geom = dict(nav.geometry)
+    try:
+        if all(k in data and data[k] not in (None, "") for k in ("radius", "step_x", "step_y")):
+            radius, sx, sy = (int(data[k]) for k in ("radius", "step_x", "step_y"))
+            if min(radius, sx, sy) < 1:
+                raise ValueError("Radius and step sizes must be positive.")
+            if remember_geometry:
+                nav.set_geometry(radius, sx, sy)
+            geom.update(well_radius_steps=radius, step_x=sx, step_y=sy)
+    except ValueError as e:
+        return {"error": str(e)}, 400
+
+    cx, cy = nav.bookmarks[well_name]
+    tiles = nav.generate_circular_grid(
+        center_x=cx,
+        center_y=cy,
+        radius=int(geom["well_radius_steps"]),
+        step_x=int(geom["step_x"]),
+        step_y=int(geom["step_y"]),
+    )
+    if not tiles:
+        return {"error": "No tiles fit within circle and soft limits"}, 400
+
+    cancel = reserve_scan("circular", source=source)
+    if cancel is None:
+        return {"error": "A scan is already running"}, 409
+
+    def run_circular_scan():
+        t_start = time.perf_counter()
+        scan_status["running"] = True
+        scan_status["current_step"] = f"Starting circular scan on {well_name} ({len(tiles)} tiles)..."
         emit_socket_event("scan_status", scan_status)
-        print(f"[SCAN] Next scan at {scan_status['next_scan']} (in {wait/60:.1f} min)")
-        time.sleep(wait)
-        run_scan()
+
+        set_led(True)
+        emit_socket_event("led_state", {"state": True})
+
+        log_event(
+            f"SCAN_WELL_START      {well_name} (R={geom['well_radius_steps']}, "
+            f"step={geom['step_x']}x{geom['step_y']}, {len(tiles)} tiles)"
+        )
+
+        settle_sec = float(geom.get("move_settle_sec", 0.5))
+        captured = 0
+
+        try:
+            for idx, tile in enumerate(tiles, 1):
+                if cancel.is_set():
+                    return
+                tx, ty = tile["x"], tile["y"]
+                r_idx, c_idx = tile["row"], tile["col"]
+                scan_status["current_step"] = (
+                    f"{well_name} tile {idx}/{len(tiles)} (r{r_idx:02d}_c{c_idx:02d}) @ ({tx:+d}, {ty:+d})"
+                )
+                emit_socket_event("scan_status", scan_status)
+
+                t_tile = time.perf_counter()
+                pos = nav.move_to(tx, ty, cancel=cancel)
+                if cancel.wait(max(0, settle_sec)):
+                    return
+
+                tile_label = f"{well_name}_r{r_idx:02d}_c{c_idx:02d}"
+                saved = take_scan_photo(tile_label)
+                if saved:
+                    captured += 1
+                tile_us = int((time.perf_counter() - t_tile) * 1_000_000)
+                log_event(
+                    f"SCAN_TILE [{idx:02d}/{len(tiles):02d}]    {tile_label} @ (X={pos['x']:+d}, Y={pos['y']:+d})",
+                    latency_us=tile_us,
+                )
+
+            scan_status["current_step"] = "Returning to (0, 0) landmark..."
+            emit_socket_event("scan_status", scan_status)
+            pos = nav.move_to(0, 0, cancel=cancel)
+            if cancel.is_set():
+                return
+            total_us = int((time.perf_counter() - t_start) * 1_000_000)
+            log_event(
+                f"SCAN_RETURN_ZERO     Arrived at (X={pos['x']:+d}, Y={pos['y']:+d}) — "
+                f"{captured}/{len(tiles)} tiles captured, awaiting landmark check",
+                latency_us=total_us,
+            )
+            emit_socket_event(
+                "scan_verify_prompt",
+                {
+                    "well": well_name,
+                    "tiles_captured": captured,
+                    "tiles_total": len(tiles),
+                    "position": pos,
+                },
+            )
+            return f"{captured}/{len(tiles)} photos saved"
+        finally:
+            set_led(False)
+            emit_socket_event("led_state", {"state": False})
+            if not cancel.is_set():
+                scan_status["current_step"] = ""
+
+    def worker():
+        result = "Failed"
+        try:
+            result = run_circular_scan()
+        finally:
+            finish_scan_status(cancel, "Circular scan stopped.", result)
+
+    try:
+        threading.Thread(target=worker, daemon=True).start()
+    except RuntimeError:
+        finish_scan_status(cancel, "Scan could not start.")
+        raise
+    return {"status": "started", "well": well_name, "tiles": len(tiles)}, 200
 
 
-def start_scan_scheduler() -> None:
-    """Start the hourly automated scan scheduler daemon thread once."""
-    global _scheduler_started
-    if not AUTO_SCAN_ENABLED:
-        scan_status["next_scan"] = "—"
-        print("[SCAN] Automatic hourly scan scheduler disabled (AUTO_SCAN_ENABLED=False).")
-        return
-    if _scheduler_started:
-        return
-    _scheduler_started = True
-    threading.Thread(target=_scan_scheduler_loop, daemon=True, name="ScanScheduler").start()
+_schedule_changed = threading.Condition()
+_schedule_file = BASE_DIR / "state" / "scan_schedule.json"
+_schedule = dict(enabled=AUTO_SCAN_ENABLED, mode="six_chamber", start="00:00", end="23:59", interval=60)
+
+
+def validate_schedule(data):
+    if not isinstance(data, dict) or type(data.get("enabled")) is not bool:
+        raise ValueError("Choose whether the schedule is enabled.")
+    interval_only = data.get("timing") == "interval"
+    for key in (() if interval_only else ("start", "end")):
+        if not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", str(data.get(key))):
+            raise ValueError("Enter start and end times in HH:MM format.")
+    minutes = data.get("interval")
+    if type(minutes) is not int or not 1 <= minutes <= 1440:
+        raise ValueError("Interval must be a whole number from 1 to 1440 minutes.")
+    settings = dict(enabled=data["enabled"], interval=minutes)
+    if interval_only or "anchor" in data:
+        anchor = data.get("anchor")
+        if type(anchor) is not int or not 0 <= anchor <= 253402214400:
+            raise ValueError("Invalid interval start time.")
+        settings["anchor"] = anchor
+    if interval_only:
+        settings["timing"] = "interval"
+    else:
+        settings.update(start=data["start"], end=data["end"])
+        settings["wait_for_start"] = data.get("wait_for_start", True) is True
+    for key in ("start_date", "end_date"):
+        value = data.get(key)
+        if value not in (None, ""):
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+                raise ValueError("Choose a valid calendar date.")
+            datetime.date.fromisoformat(value)
+            settings[key] = value
+    if settings.get("end_date") and settings.get("start_date", "") > settings["end_date"]:
+        raise ValueError("End date must be on or after the start date.")
+    mode = data.get("mode", "six_chamber")
+    if mode not in ("six_chamber", "circular"):
+        raise ValueError("Select a scan mode.")
+    settings["mode"] = mode
+    if mode == "circular":
+        params = data.get("circular")
+        if not isinstance(params, dict) or not isinstance(params.get("well"), str) or not params["well"]:
+            raise ValueError("Select a well for the circular scan.")
+        for key in ("radius", "step_x", "step_y"):
+            if type(params.get(key)) is not int or params[key] < 1:
+                raise ValueError("Circular radius and step sizes must be positive whole numbers.")
+        settings["circular"] = {k: params[k] for k in ("well", "radius", "step_x", "step_y")}
+    return settings
+
+
+def get_schedule():
+    with _schedule_changed:
+        return dict(_schedule)
+
+
+def window_day(settings, local):
+    """Identify the daily window containing this local time, including overnight windows."""
+    date = local.date()
+    clock = local.strftime("%H:%M")
+    start, end = settings["start"], settings["end"]
+    if not settings.get("start_date", "") <= date.isoformat() <= settings.get("end_date", "9999-12-31"):
+        return None
+    if start <= clock <= end or (start > end and clock >= start):
+        return date
+    if start > end and clock <= end:
+        previous = date - datetime.timedelta(days=1)
+        if previous.isoformat() >= settings.get("start_date", ""):
+            return previous
+    return None
+
+
+def launch_scheduled_scan(settings):
+    if settings["mode"] == "circular":
+        result, status = start_circular_scan(settings["circular"], source="scheduled")
+        if status != 200:
+            raise ValueError(result["error"])
+    else:
+        cancel = reserve_scan("six_chamber", source="scheduled")
+        if cancel is None:
+            raise ValueError("A scan is already running.")
+        try:
+            threading.Thread(target=_run_reserved_scan, args=(cancel,), daemon=True).start()
+        except RuntimeError:
+            finish_scan_status(cancel, "Scan could not start.")
+            raise
+
+
+def persist_schedule(settings):
+    _schedule_file.parent.mkdir(parents=True, exist_ok=True)
+    temp = _schedule_file.with_suffix(".tmp")
+    temp.write_text(json.dumps(settings), encoding="utf8")
+    temp.replace(_schedule_file)
+
+
+def save_schedule(data):
+    global _schedule
+    now = datetime.datetime.now(LA_TZ)
+    if isinstance(data, dict):
+        data = dict(data, anchor=int(now.timestamp()))
+    settings = validate_schedule(data)
+    immediate = settings["enabled"] and (
+        settings.get("timing") == "interval" or window_day(settings, now) is not None
+    )
+    if settings["enabled"] and settings.get("wait_for_start"):
+        # Find the first eligible occurrence of the selected clock time.
+        first_window = dict(settings, end=settings["start"])
+        first_window.pop("anchor", None)
+        first = next_scan_time(first_window, now)
+        if first is None:
+            raise ValueError("The selected start time has passed for all selected dates.")
+        settings["anchor"] = int(first.timestamp())
+        immediate = False
+    if settings["enabled"] and not immediate and next_scan_time(settings, now) is None:
+        raise ValueError("No scan start remains within the selected dates and times.")
+    with _schedule_changed:
+        if settings["enabled"] and _schedule["enabled"]:
+            raise ValueError("An automatic schedule is already enabled.")
+        persist_schedule(settings)
+        if immediate:
+            try:
+                launch_scheduled_scan(settings)
+            except Exception:
+                persist_schedule(_schedule)
+                raise
+        elif not settings["enabled"]:
+            request_scan_stop(source="scheduled")
+        _schedule = settings
+        _schedule_changed.notify_all()
+        emit_socket_event("scan_schedule", settings)
+    return settings
+
+
+def next_scan_time(settings, now):
+    if not settings["enabled"]:
+        return None
+    if settings.get("wait_for_start") and settings.get("anchor", 0) > now.timestamp():
+        return datetime.datetime.fromtimestamp(settings["anchor"], LA_TZ)
+    if settings.get("timing") == "interval":
+        period = settings["interval"] * 60
+        anchor = settings["anchor"]
+        slot = max(1, int((now.timestamp() - anchor) // period) + 1)
+        return datetime.datetime.fromtimestamp(anchor + slot * period, LA_TZ)
+
+    # On the activation day, space slots from the actual first scan.
+    initial_window = None
+    if "anchor" in settings:
+        anchor = settings["anchor"]
+        initial_window = window_day(settings, datetime.datetime.fromtimestamp(anchor, LA_TZ))
+        if initial_window:
+            period = settings["interval"] * 60
+            slot = max(1, int((now.timestamp() - anchor) // period) + 1)
+            due = datetime.datetime.fromtimestamp(anchor + slot * period, LA_TZ)
+            if window_day(settings, due) == initial_window:
+                return due
+
+    def minutes(value):
+        hour, minute = map(int, value.split(":"))
+        return hour * 60 + minute
+
+    start = minutes(settings["start"])
+    span = (minutes(settings["end"]) - start) % 1440
+    # Walk real minutes so nonexistent spring-forward times are skipped.
+    candidate = now.astimezone(datetime.timezone.utc).replace(second=0, microsecond=0)
+    first = datetime.date.fromisoformat(settings["start_date"]) if settings.get("start_date") else None
+    last = datetime.date.fromisoformat(settings["end_date"]) if settings.get("end_date") else None
+    if first and now.astimezone(LA_TZ).date() < first:
+        midnight = LA_TZ.localize(datetime.datetime.combine(first, datetime.time.min))
+        candidate = midnight.astimezone(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+    while True:
+        candidate += datetime.timedelta(minutes=1)
+        local = candidate.astimezone(LA_TZ)
+        if last and local.date() > last:
+            return None
+        minute = local.hour * 60 + local.minute
+        if first and local.date() == first and minute < start:
+            continue
+        offset = (minute - start) % 1440
+        if offset <= span and offset % settings["interval"] == 0:
+            if initial_window is None or window_day(settings, local) != initial_window:
+                return local
+
+
+def _scan_scheduler_loop():
+    global _schedule
+    while True:
+        with _schedule_changed:
+            now = datetime.datetime.now(LA_TZ)
+            due = next_scan_time(_schedule, now)
+            scan_status["next_scan"] = due.strftime("%Y-%m-%d %H:%M %Z") if due else "—"
+            scan_status["next_scan_iso"] = due.isoformat() if due else None
+            emit_socket_event("scan_status", dict(scan_status))
+            if due is None:
+                if _schedule["enabled"]:
+                    # The final eligible slot has passed. Also applies after a restart.
+                    _schedule = dict(_schedule, enabled=False)
+                    emit_socket_event("scan_schedule", dict(_schedule))
+                _schedule_changed.wait()
+                continue
+            if _schedule_changed.wait(timeout=max(0, due.timestamp() - time.time())):
+                continue
+            try:
+                launch_scheduled_scan(_schedule)
+            except Exception as exc:
+                log_event(f"Scheduled scan skipped: {exc!r}")
+
+
+
+def start_scan_scheduler():
+    global _scheduler_started, _schedule
+    with _schedule_changed:
+        if _scheduler_started:
+            return
+        try:
+            _schedule = validate_schedule(json.loads(_schedule_file.read_text(encoding="utf8")))
+        except FileNotFoundError:
+            pass
+        except (ValueError, OSError) as exc:
+            _schedule["enabled"] = False
+            print(f"[SCAN] Schedule disabled: {exc}")
+        _scheduler_started = True
+        threading.Thread(target=_scan_scheduler_loop, daemon=True, name="ScanScheduler").start()

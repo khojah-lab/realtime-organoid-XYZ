@@ -20,10 +20,9 @@
 <div id="position-modal-overlay">
     <div id="position-modal">
         <div class="modal-icon">🔬</div>
-        <h3>Camera Position Check</h3>
+        <h3>Start six-chamber scan?</h3>
         <p>
-            Before starting the scan, please confirm:<br><br>
-            <strong>Is the camera currently positioned at the<br>bottom-right chamber?</strong>
+            The stage will move to the bottom-right bookmark before the first photo, then visit the other five wells.
         </p>
         <button class="modal-btn-yes" id="modal-yes">✔ Yes, start scan</button>
         <button class="modal-btn-no"  id="modal-no">✘ No, cancel</button>
@@ -103,16 +102,21 @@
                     Z: <span id="nav-pos-z">+0</span>
                 </div>
                 <div class="stage-pos-limits">
-                    Limits: X [<span id="nav-lim-x">-1800, 9400</span>] · Y [<span id="nav-lim-y">-1200, 6500</span>]
+                    Navigation limits: X [<span id="nav-lim-x">-1800, 9400</span>] · Y [<span id="nav-lim-y">-1200, 6500</span>]
                 </div>
                 <div class="nav-step-row">
-                    <span class="nav-step-label">Tap Step:</span>
-                    <button type="button" class="nav-step-btn" data-steps="50">50</button>
-                    <button type="button" class="nav-step-btn active-step" data-steps="250">250</button>
-                    <button type="button" class="nav-step-btn" data-steps="500">500</button>
-                    <button type="button" class="nav-step-btn" data-steps="1000">1000</button>
-                    <button type="button" id="btn-nav-zero" title="Set current position as (0,0) bottom_left landmark">Zero (0,0)</button>
+                    <label class="nav-step-label" for="nav-tap-steps">Motor steps</label>
+                    <input id="nav-tap-steps" type="number" min="1" max="10000" step="1" value="10"
+                           required aria-describedby="nav-step-help">
                 </div>
+                <div class="nav-step-row nav-step-presets" role="group" aria-label="Preset motor steps">
+                    <button type="button" class="nav-step-preset" data-steps="10">10</button>
+                    <button type="button" class="nav-step-preset" data-steps="30">30</button>
+                    <button type="button" class="nav-step-preset" data-steps="50">50</button>
+                    <button type="button" class="nav-step-preset" data-steps="70">70</button>
+                    <button type="button" class="nav-step-preset" data-steps="100">100</button>
+                </div>
+                <p id="nav-step-help">Manual XY arrows can move beyond the navigation limits. Each tap or hold repeat uses the selected number of motor steps.</p>
             </div>
 
         </div>
@@ -237,7 +241,27 @@
         </div>
 
         <br>
-        <button class="autofocusbutton">Autofocus</button>
+        <section class="scan-box origin-calibration" id="stage-autofocus" aria-label="Focus controls">
+            <fieldset id="focus-actions" aria-label="Focus height" disabled>
+                <button type="button" id="focus-recall" disabled>Autofocus</button>
+                <span id="focus-status" role="status"></span>
+                <h3 id="z-origin-heading">Z origin</h3>
+                <details>
+                    <summary>Advanced calibration</summary>
+                    <p>If the Z origin is already set, you can use Autofocus directly. To calibrate, focus manually and save the current height.</p>
+                    <button type="button" id="focus-save">Save current height</button>
+                </details>
+            </fieldset>
+        </section>
+
+        <section class="scan-box origin-calibration" aria-labelledby="xy-origin-heading">
+            <h3 id="xy-origin-heading">XY origin</h3>
+            <details>
+                <summary>Advanced calibration</summary>
+                <p>If the XY origin is already set, you can skip this step. To calibrate for automatic scans, move the camera directly beneath the center of the bottom-left well and save that location as (0, 0).</p>
+                <button type="button" id="btn-nav-zero">Save current location as XY origin</button>
+            </details>
+        </section>
 
         <!-- ── STAGE NAVIGATION & 6-WELL BOOKMARKS ── -->
         <div class="scan-box" id="nav_box">
@@ -257,14 +281,18 @@
                 <input type="number" id="nav-goto-x" class="nav-coord-input" placeholder="X" value="0">
                 <input type="number" id="nav-goto-y" class="nav-coord-input" placeholder="Y" value="0">
                 <button type="button" id="btn-nav-goto-xy">Move to (X,Y)</button>
+                <button type="button" id="btn-nav-stop" title="Stop the current well or XY move">Stop move</button>
+                <span id="nav-stop-status" role="status"></span>
             </div>
         </div>
 
         <!-- ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── -->
         <div class="scan-box" id="scan_box">
-            <b>Circular Boustrophedon Well Scan</b><br>
-            <div class="scan-config-row">
-                <label>Well:
+            <h3 class="scan-section-title">Run a scan once</h3>
+            <fieldset class="circular-settings">
+                <legend>Circular Scan Well only</legend>
+                <div class="scan-config-row">
+                <label>Target well
                     <select id="scan-well-select">
                         <option value="bottom_middle" selected>bottom_middle</option>
                         <option value="bottom_left">bottom_left</option>
@@ -274,24 +302,75 @@
                         <option value="top_right">top_right</option>
                     </select>
                 </label>
-                <label>R:
+                <label>Radius (R)
                     <input type="number" id="scan-geom-r" value="1500">
                 </label>
-                <label>ΔX:
+                <label>Column spacing (ΔX)
                     <input type="number" id="scan-geom-sx" value="500">
                 </label>
-                <label>ΔY:
+                <label>Row spacing (ΔY)
                     <input type="number" id="scan-geom-sy" value="500">
                 </label>
-            </div>
-            Last scan: &nbsp;<span id="scan_last">Never</span> &nbsp;|&nbsp;
-            Auto-schedule: &nbsp;<span id="scan_next">—</span><br>
-            <span id="scan_countdown"></span>
-            <div id="scan_progress"></div>
-            <div class="scan-actions-row">
+                </div>
+                <small>Distances are in motor steps. Smaller spacing takes more photos within the circle.</small>
+            </fieldset>
+            <div>Last manual scan: <span id="scan_last">Loading…</span></div>
+            <div role="status"><strong id="scan-mode-status"></strong><span id="scan_progress"></span></div>
+            <p class="scan-mode-hint" id="scan-mode-hint">Circular Scan Well takes multiple photos in one well. Single Shot takes one photo per well across all six.</p>
+            <div class="scan-actions-row" role="group" aria-describedby="scan-mode-hint" aria-label="Run one scan">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
                 <button class="scannowbutton secondary-scan-btn" id="scannowbtn" type="button">6-Chamber Single Shot</button>
+                <button id="btn-stop-scan" type="button" hidden>Stop manual scan</button>
             </div>
+
+            <section class="scan-schedule" aria-labelledby="schedule-title">
+                <h3 class="scan-section-title" id="schedule-title">Schedule automatic scans</h3>
+                <div>Last scheduled scan: <span id="scheduled-scan-last">Loading…</span></div>
+                <form id="scan-schedule-form">
+                    <fieldset disabled>
+                        <div class="scan-schedule-fields">
+                            <label>Scan mode
+                                <select name="mode">
+                                    <option value="six_chamber">6-Chamber Single Shot</option>
+                                    <option value="circular">Circular Scan Well</option>
+                                </select>
+                            </label>
+                            <label>Interval (minutes)
+                                <input required type="number" name="interval" min="1" max="1440" step="1">
+                            </label>
+                        </div>
+                        <small id="schedule-well-note" hidden>Uses the well, R, ΔX and ΔY selected above when you confirm.</small>
+                        <div class="schedule-options">
+                            <button id="schedule-start" type="submit">Start automatic scans</button>
+                            <details id="schedule-advanced">
+                                <summary>Advanced: dates and times</summary>
+                                <div class="scan-schedule-fields">
+                                    <label>Start date <input type="date" name="start_date"></label>
+                                    <label>End date <input type="date" name="end_date"></label>
+                                </div>
+                                <div class="scan-schedule-fields">
+                                    <label>Start time <input type="time" name="start"></label>
+                                    <label>End time <input type="time" name="end"></label>
+                                </div>
+                                <small>Optional daily window in Los Angeles time.</small>
+                                <button type="button" id="schedule-clear-window">Clear dates and times</button>
+                            </details>
+                        </div>
+                    </fieldset>
+                </form>
+                <div id="schedule-active" hidden>
+                    <strong>Automatic scanning enabled</strong>
+                    <p id="schedule-summary"></p>
+                    <p id="schedule-next" hidden>
+                        <strong>Next automatic scan:</strong>
+                        <time id="schedule-next-time"></time>
+                        <span id="schedule-remaining"></span>
+                    </p>
+                </div>
+                <div id="scheduled-progress" role="status"></div>
+                <button type="button" id="schedule-cancel" hidden>Stop automatic scanning</button>
+                <span id="schedule-feedback" role="status"></span>
+            </section>
 
             <!-- Post-Scan (0, 0) Landmark Verification Prompt -->
             <div id="scan-verify-banner">
@@ -302,6 +381,8 @@
                 <button type="button" id="btn-verify-no">⚠ Drift Detected — Jog &amp; Re-Zero</button>
             </div>
         </div>
+
+        {% include 'drive_storage_panel.html' %}
 
         <!-- ACTION LOG -->
         <div class="action-log-header">

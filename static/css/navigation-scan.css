@@ -10,8 +10,52 @@
     max-width: 560px;
 }
 
+.origin-calibration h3 {
+    margin: 0 0 8px;
+    color: #1a237e;
+    font-size: 1.15em;
+}
+
+.origin-calibration summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid #99aac2;
+    border-radius: 4px;
+    background: white;
+    color: #254569;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.origin-calibration summary::-webkit-details-marker { display: none; }
+
+.origin-calibration summary::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border: solid currentColor;
+    border-width: 0 2px 2px 0;
+    transform: rotate(-45deg);
+}
+
+.origin-calibration details[open] > summary::before { transform: rotate(45deg); }
+
 .scan-box b {
     color: #1a237e;
+}
+
+#scan_box .scannowbutton:disabled {
+    background: #e4e8ee;
+    color: #505b69;
+    cursor: default;
+}
+
+#scan_box .scannowbutton.active-scan {
+    background: #174b84;
+    color: white;
+    box-shadow: inset 0 -3px 0 #8cc8ff;
 }
 
 .scan-running {
@@ -27,10 +71,13 @@
     min-height: 1.2em;
 }
 
-#scan_countdown {
-    color: #1565C0;
-    font-weight: bold;
-    font-size: 14px;
+#schedule-next {
+    margin: 0 0 12px;
+    color: #163e69;
+}
+#schedule-remaining {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ── 6-WELL STAGE NAVIGATION & BOOKMARKS ── */
@@ -164,6 +211,19 @@
     color: #fff;
     cursor: pointer;
     font-size: 12px;
+}
+
+#btn-nav-stop {
+    padding: 5px 10px;
+    border: 1px solid #a62626;
+    border-radius: 4px;
+    color: #952020;
+    background: white;
+    cursor: pointer;
+}
+
+#btn-nav-stop:hover {
+    background: #ffeded;
 }
 
 #btn-nav-goto-xy:hover {
@@ -307,3 +367,53 @@
 .log-error { color: #ff5252; }
 .log-warn  { color: #ffd54f; }
 .log-scan  { color: #4dd0e1; }
+
+.scan-schedule { margin-top: 12px; border-top: 1px solid #ccd6e0; padding-top: 8px; }
+#focus-actions { margin: 0; padding: 0; border: 0; }
+#focus-recall {
+    padding: 6px 14px;
+    border: 1px solid #2463a5;
+    border-radius: 4px;
+    background: #1565c0;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+#focus-recall:disabled, #focus-actions:disabled #focus-recall { opacity: .55; cursor: default; }
+#z-origin-heading { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ccd6e0; }
+#focus-actions p { margin: 8px 0; }
+#focus-status:not(:empty) { display: block; margin-top: 8px; }
+
+#scan_box .scan-section-title {
+    margin: 2px 0 10px;
+    color: #1a237e;
+    font: bold 16px/1.3 sans-serif;
+}
+#scan_box label,
+#scan_box select,
+#scan_box input,
+#scan_box button {
+    font: inherit;
+}
+.scan-mode-hint {
+    margin: 6px 0;
+    color: #414e61;
+}
+
+.scan-schedule-fields label { display: grid; gap: 3px; font-size: 14px; }
+.scan-schedule-fields input { padding: 4px 7px; font: inherit; }
+.scan-schedule [hidden] { display: none; }
+#schedule-summary { margin: 4px 0 8px; }
+.scan-schedule fieldset { margin: 8px 0; padding: 8px 0; border: 0; }
+.scan-schedule-fields { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.scan-schedule-fields input[type=number] { width: 5em; }
+.scan-schedule small { display: block; margin-bottom: 8px; }
+
+.circular-settings { margin: 8px 0 12px; padding: 6px 10px 10px; border: 1px solid #c6d1df; border-radius: 5px; min-width: 0; }
+.circular-settings legend { font-size: inherit; font-weight: 600; width: auto; margin: 0; padding: 0 4px; border: 0; }
+.circular-settings .scan-config-row { align-items: end; margin: 0 0 6px; }
+.circular-settings label { display: grid; gap: 3px; }
+
+.schedule-options { display: flex; align-items: flex-start; gap: 8px 16px; flex-wrap: wrap; }
+.schedule-options summary { cursor: pointer; padding: 4px 0; color: #174b84; }

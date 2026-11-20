@@ -7,12 +7,11 @@ camera zoom/focus/autofocus adjustments.
 ────────────────────────────────────────────────────────────────
 """
 
-import datetime
 import threading
 import time
 from flask import Blueprint, jsonify, request
 
-from config import DEFAULT_MANUAL_STEPS, LA_TZ
+from config import DEFAULT_MANUAL_STEPS
 from hardware.dc_motors import (
     get_motor_states,
     set_all_motors,
@@ -20,12 +19,11 @@ from hardware.dc_motors import (
     stop_all_motors,
     stop_motor as stop_motor_single,
 )
-from hardware.gpio_control import set_led
 from hardware.stepper_motors import release_all
 from routes.main_routes import system_params
-from services.scanner import get_scan_status, scan_status, take_scan_photo
+from services.scanner import get_scan_status, request_scan_stop, start_circular_scan
 from services.stage_navigator import get_navigator
-from services.telemetry import emit_socket_event, log_event
+from services.telemetry import log_event
 
 motion_bp = Blueprint("motion", __name__)
 
@@ -33,15 +31,24 @@ motion_bp = Blueprint("motion", __name__)
 # held, so a burst is dropped if the same axis is still moving (otherwise two
 # threads would step the same motor at once).
 axis_locks = {"x": threading.Lock(), "y": threading.Lock(), "z": threading.Lock()}
+jog_cancels = {axis: threading.Event() for axis in axis_locks}
 nav_move_lock = threading.Lock()
+active_goto = None  # (cancel, finished) events for the current navigation command
+
+
+def cancel_goto():
+    with nav_move_lock:
+        if active_goto is not None:
+            cancel, finished = active_goto
+            cancel.set()
+            return finished
+    return None
 
 MOVE_DIRECTIONS = {"up", "down", "left", "right", "forward", "backward"}
 
 
 def _parse_steps() -> int:
-    """Return requested step count (defaults to 50 for hold-repeats or if unspecified)."""
-    if request.args.get("repeat"):
-        return DEFAULT_MANUAL_STEPS
+    """Use the requested step count for both taps and hold repeats."""
     try:
         val = int(request.args.get("steps", DEFAULT_MANUAL_STEPS))
         return max(1, min(10000, abs(val)))
@@ -49,10 +56,10 @@ def _parse_steps() -> int:
         return DEFAULT_MANUAL_STEPS
 
 
-def start_move(axis: str, dx: int, dy: int, dz: int, event_name: str, delta_label: str):
+def start_move(axis: str, steps: int, event_name: str, delta_label: str):
     """
     Validate scan-running state, acquire the per-axis lock non-blocking,
-    and run `StageNavigator.move_by` in a background daemon thread.
+    and run `StageNavigator.jog_axis` in a background daemon thread.
     """
     if get_scan_status()["running"] and not request.args.get("override"):
         if not request.args.get("repeat"):
@@ -63,12 +70,14 @@ def start_move(axis: str, dx: int, dy: int, dz: int, event_name: str, delta_labe
     lock = axis_locks[axis]
     if not lock.acquire(blocking=False):
         return "BUSY"
+    cancel = jog_cancels[axis]
+    cancel.clear()
 
     def run():
         t0 = time.perf_counter()
         try:
             nav = get_navigator()
-            pos = nav.move_by(dx=dx, dy=dy, dz=dz)
+            pos = nav.jog_axis(axis, steps, cancel)
             if not is_repeat:
                 elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
                 log_event(
@@ -86,39 +95,39 @@ def start_move(axis: str, dx: int, dy: int, dz: int, event_name: str, delta_labe
 @motion_bp.route("/up")
 def up():
     s = _parse_steps()
-    return start_move("z", 0, 0, s, "MOVE_UP", f"dz=+{s}")
+    return start_move("z", s, "MOVE_UP", f"dz=+{s}")
 
 
 @motion_bp.route("/down")
 def down():
     s = _parse_steps()
-    return start_move("z", 0, 0, -s, "MOVE_DOWN", f"dz=-{s}")
+    return start_move("z", -s, "MOVE_DOWN", f"dz=-{s}")
 
 
 @motion_bp.route("/left")
 def left():
     s = _parse_steps()
-    return start_move("x", -s, 0, 0, "MOVE_LEFT", f"dx=-{s}")
+    return start_move("x", -s, "MOVE_LEFT", f"dx=-{s}")
 
 
 @motion_bp.route("/right")
 def right():
     s = _parse_steps()
-    return start_move("x", s, 0, 0, "MOVE_RIGHT", f"dx=+{s}")
+    return start_move("x", s, "MOVE_RIGHT", f"dx=+{s}")
 
 
 @motion_bp.route("/forward")
 def forward():
     # +Y moves from bottom row toward top row (stepper.BACKWARD inside StageNavigator)
     s = _parse_steps()
-    return start_move("y", 0, s, 0, "MOVE_FORWARD", f"dy=+{s}")
+    return start_move("y", s, "MOVE_FORWARD", f"dy=+{s}")
 
 
 @motion_bp.route("/backward")
 def backward():
     # -Y moves from top row toward bottom row (stepper.FORWARD inside StageNavigator)
     s = _parse_steps()
-    return start_move("y", 0, -s, 0, "MOVE_BACKWARD", f"dy=-{s}")
+    return start_move("y", -s, "MOVE_BACKWARD", f"dy=-{s}")
 
 
 @motion_bp.route("/move_hold_end")
@@ -142,6 +151,10 @@ def move_hold_end():
 
 @motion_bp.route("/stop")
 def stop():
+    for cancel in jog_cancels.values():
+        cancel.set()
+    if cancel_goto() is not None:
+        return "OK"
     release_all()
     pos = get_navigator().pos
     log_event(f"STOP_STEPPERS        Coils released @ (X={pos['x']:+d}, Y={pos['y']:+d}, Z={pos['z']:+d})")
@@ -157,7 +170,7 @@ def nav_state():
 
 @motion_bp.route("/nav/zero", methods=["POST"])
 def nav_zero():
-    """Set current position as (0, 0, 0) (`bottom_left` landmark) and clear uncertainty."""
+    """Set current XY position as (0, 0) (`bottom_left` landmark) and clear uncertainty."""
     nav = get_navigator()
     pos = nav.set_origin()
     log_event(f"NAV_ZERO             Origin set -> (X={pos['x']:+d}, Y={pos['y']:+d}, Z={pos['z']:+d})")
@@ -228,6 +241,14 @@ def nav_config():
     return jsonify(nav.get_public_state())
 
 
+@motion_bp.route("/nav/stop", methods=["POST"])
+def nav_stop():
+    finished = cancel_goto()
+    if finished is None:
+        return jsonify(status="idle")
+    return jsonify(status="stopped" if finished.wait(timeout=2) else "stopping")
+
+
 @motion_bp.route("/nav/goto", methods=["POST"])
 def nav_goto():
     """Move stage to a named bookmark or explicit (x, y) coordinates in a background thread."""
@@ -252,135 +273,51 @@ def nav_goto():
         except (KeyError, ValueError, TypeError):
             return jsonify({"error": "Provide bookmark 'name' or integer 'x' and 'y'"}), 400
 
-    if not nav_move_lock.acquire(blocking=False):
-        return jsonify({"error": "Stage is already moving"}), 409
+    global active_goto
+    cancel = threading.Event()
+    finished = threading.Event()
+    with nav_move_lock:
+        if active_goto is not None:
+            return jsonify({"error": "Stage is already moving"}), 409
+        active_goto = (cancel, finished)
 
     def run_goto():
+        global active_goto
         t0 = time.perf_counter()
         try:
-            pos = nav.move_to(tx, ty)
+            pos = nav.move_to(tx, ty, cancel=cancel)
+            event = "NAV_GOTO_STOPPED" if cancel.is_set() else "NAV_GOTO"
             elapsed_us = int((time.perf_counter() - t0) * 1_000_000)
             log_event(
-                f"NAV_GOTO             {label} -> (X={pos['x']:+d}, Y={pos['y']:+d})",
+                f"{event:<21}{label} -> (X={pos['x']:+d}, Y={pos['y']:+d})",
                 latency_us=elapsed_us,
             )
         finally:
-            nav_move_lock.release()
+            with nav_move_lock:
+                finished.set()
+                active_goto = None
 
-    threading.Thread(target=run_goto, daemon=True).start()
+    try:
+        threading.Thread(target=run_goto, daemon=True).start()
+    except RuntimeError:
+        with nav_move_lock:
+            finished.set()
+            active_goto = None
+        raise
     return jsonify({"status": "moving", "target": [tx, ty], "label": label})
+
+
+@motion_bp.route("/scan/stop", methods=["POST"])
+def stop_scan():
+    status = request_scan_stop()
+    return jsonify(status)
 
 
 @motion_bp.route("/nav/scan_well", methods=["POST"])
 def nav_scan_well():
-    """
-    Execute a circular boustrophedon (snake) scan on a single bookmarked well,
-    return to `(0, 0)` landmark, and emit `scan_verify_prompt` to the UI.
-    """
-    if get_scan_status()["running"]:
-        return jsonify({"error": "A scan is already running"}), 409
-
-    nav = get_navigator()
-    if nav.state.get("position_uncertain"):
-        log_event("SCAN_REJECTED        Stage position uncertain; zero or sync required")
-        return jsonify({
-            "error": "Stage position is marked UNCERTAIN after an interrupted move. Zero or Sync first."
-        }), 409
-
     data = request.get_json(silent=True) or request.form or request.args
-    well_name = (data.get("well") or "bottom_middle").strip()
-    if well_name not in nav.bookmarks:
-        return jsonify({"error": f"Unknown bookmark '{well_name}'"}), 400
-
-    # Optional inline geometry override from UI inputs
-    try:
-        if all(k in data and data[k] not in (None, "") for k in ("radius", "step_x", "step_y")):
-            nav.set_geometry(int(data["radius"]), int(data["step_x"]), int(data["step_y"]))
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    cx, cy = nav.bookmarks[well_name]
-    geom = nav.geometry
-    tiles = nav.generate_circular_grid(
-        center_x=cx,
-        center_y=cy,
-        radius=int(geom["well_radius_steps"]),
-        step_x=int(geom["step_x"]),
-        step_y=int(geom["step_y"]),
-    )
-    if not tiles:
-        return jsonify({"error": "No tiles fit within circle and soft limits"}), 400
-
-    def run_circular_scan():
-        t_start = time.perf_counter()
-        scan_status["running"] = True
-        scan_status["current_step"] = f"Starting circular scan on {well_name} ({len(tiles)} tiles)..."
-        emit_socket_event("scan_status", scan_status)
-
-        set_led(True)
-        emit_socket_event("led_state", {"state": True})
-
-        log_event(
-            f"SCAN_WELL_START      {well_name} (R={geom['well_radius_steps']}, "
-            f"step={geom['step_x']}x{geom['step_y']}, {len(tiles)} tiles)"
-        )
-
-        settle_sec = float(geom.get("move_settle_sec", 0.5))
-        captured = 0
-
-        try:
-            for idx, tile in enumerate(tiles, 1):
-                tx, ty = tile["x"], tile["y"]
-                r_idx, c_idx = tile["row"], tile["col"]
-                scan_status["current_step"] = (
-                    f"{well_name} tile {idx}/{len(tiles)} (r{r_idx:02d}_c{c_idx:02d}) @ ({tx:+d}, {ty:+d})"
-                )
-                emit_socket_event("scan_status", scan_status)
-
-                t_tile = time.perf_counter()
-                pos = nav.move_to(tx, ty)
-                if settle_sec > 0:
-                    time.sleep(settle_sec)
-
-                tile_label = f"{well_name}_r{r_idx:02d}_c{c_idx:02d}"
-                saved = take_scan_photo(tile_label)
-                if saved:
-                    captured += 1
-                tile_us = int((time.perf_counter() - t_tile) * 1_000_000)
-                log_event(
-                    f"SCAN_TILE [{idx:02d}/{len(tiles):02d}]    {tile_label} @ (X={pos['x']:+d}, Y={pos['y']:+d})",
-                    latency_us=tile_us,
-                )
-
-            scan_status["current_step"] = "Returning to (0, 0) landmark..."
-            emit_socket_event("scan_status", scan_status)
-            pos = nav.move_to(0, 0)
-            total_us = int((time.perf_counter() - t_start) * 1_000_000)
-            log_event(
-                f"SCAN_RETURN_ZERO     Arrived at (X={pos['x']:+d}, Y={pos['y']:+d}) — "
-                f"{captured}/{len(tiles)} tiles captured, awaiting landmark check",
-                latency_us=total_us,
-            )
-            emit_socket_event(
-                "scan_verify_prompt",
-                {
-                    "well": well_name,
-                    "tiles_captured": captured,
-                    "tiles_total": len(tiles),
-                    "position": pos,
-                },
-            )
-        finally:
-            set_led(False)
-            emit_socket_event("led_state", {"state": False})
-            now = datetime.datetime.now(LA_TZ)
-            scan_status["running"] = False
-            scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
-            scan_status["current_step"] = ""
-            emit_socket_event("scan_status", scan_status)
-
-    threading.Thread(target=run_circular_scan, daemon=True).start()
-    return jsonify({"status": "started", "well": well_name, "tiles": len(tiles)})
+    result, status = start_circular_scan(data, remember_geometry=True)
+    return jsonify(result), status
 
 
 @motion_bp.route("/nav/verify_landmark", methods=["POST"])
@@ -475,6 +412,28 @@ def update_zoom_focus():
     log_event(f"ZOOM_FOCUS           zoom={system_params['zoom']} focus={system_params['focus']}")
     print("ZOOM/FOCUS ->", system_params["zoom"], system_params["focus"])
     return "OK"
+
+
+@motion_bp.route("/nav/focus/<action>", methods=["POST"])
+def stage_focus(action):
+    if action not in ("set", "return"):
+        return jsonify(error="Unknown focus action."), 404
+    if get_scan_status()["running"]:
+        return jsonify(error="Wait until the scan finishes."), 409
+    lock = axis_locks["z"]
+    if not lock.acquire(blocking=False):
+        return jsonify(error="Z axis is moving. Try again after it stops."), 409
+    try:
+        nav = get_navigator()
+        if action == "set":
+            nav.set_focus_zero()
+        else:
+            nav.return_to_focus()
+        return jsonify(nav.get_public_state())
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 409
+    finally:
+        lock.release()
 
 
 @motion_bp.route("/autofocus")

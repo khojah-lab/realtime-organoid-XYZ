@@ -2,52 +2,72 @@
 // SCANNER CONTROLS, LANDMARK VERIFY & ORGANOID DETECTION
 // =========================
 
-// Countdown timer for next scan
-function updateCountdown(nextScanStr) {
-    if (window.countdownInterval) {
-        clearInterval(window.countdownInterval);
-    }
-    window.countdownInterval = setInterval(function() {
-        var now = new Date();
-        var nextScan = new Date(nextScanStr);
-        var diff = nextScan - now;
-        if (diff <= 0) {
-            $("#scan_countdown").text("Starting scan...");
-            clearInterval(window.countdownInterval);
+var nextScanIso = null;
+var countdownTimer = null;
+
+function showNextScan(iso, label) {
+    var due = Date.parse(iso);
+    if (!Number.isFinite(due)) iso = null;
+    if (iso === nextScanIso) return;
+    nextScanIso = iso;
+    clearInterval(countdownTimer);
+    $("#schedule-next").prop("hidden", !iso);
+    if (!iso) return;
+
+    $("#schedule-next-time").attr("datetime", iso).text(label);
+    function tick() {
+        var left = Math.ceil((due - Date.now()) / 1000);
+        if (left <= 0) {
+            $("#schedule-remaining").text("(due now)");
+            clearInterval(countdownTimer);
             return;
         }
-        var hours = Math.floor(diff / (1000 * 60 * 60));
-        var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        var seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        $("#scan_countdown").text(
-            "⏱ Next scan in: " +
-            (hours > 0 ? hours + "h " : "") +
-            minutes + "m " +
-            seconds + "s"
-        );
-    }, 1000);
+        var h = Math.floor(left / 3600);
+        var m = Math.floor(left / 60) % 60;
+        $("#schedule-remaining").text("(in " + (h ? h + "h " : "") + m + "m " + left % 60 + "s)");
+    }
+    countdownTimer = setInterval(tick, 1000);
+    tick();
+}
+
+var automaticRunActive = false;
+
+function updateAutomaticStop() {
+    var enabled = savedSchedule && savedSchedule.enabled;
+    $("#schedule-cancel").prop("hidden", !enabled && !automaticRunActive)
+        .text(automaticRunActive ? "Stop current scan and cancel schedule" : "Cancel schedule");
 }
 
 // Scan status updates
-socket.on('scan_status', function(msg) {
-    $("#scan_last").text(msg.last_scan    || "Never");
-    $("#scan_next").text(msg.next_scan    || "—");
-    $("#scan_progress").text(msg.current_step || "");
+function renderScanStatus(msg) {
+    automaticRunActive = msg.running && msg.source === "scheduled";
+    updateAutomaticStop();
+    $('#btn-stop-scan').prop('hidden', !msg.running || automaticRunActive).prop('disabled', !!msg.stopping);
+    $("#scan_last").text(msg.last_manual_scan || "No scan recorded");
+    $("#scheduled-scan-last").text(msg.last_scheduled_scan || "No scan recorded");
+    showNextScan(msg.next_scan_iso, msg.next_scan);
+    var progress = msg.stopping ? "Stopping scan..." : msg.current_step || "";
+    $("#scan_progress").text(msg.running && !automaticRunActive ? progress : "");
 
-    if (msg.next_scan && msg.next_scan !== "Calculating..." && msg.next_scan !== "—") {
-        updateCountdown(msg.next_scan);
-    }
     setScanRunning(!!msg.running);
-    if (msg.running) {
-        $("#scan_box").addClass("scan-running");
-        $("#scannowbtn").prop("disabled", true).text("Scanning...");
-        $("#btn-scan-circular").prop("disabled", true).text("Scanning...");
-        $("#scan_countdown").text("");
-    } else {
-        $("#scan_box").removeClass("scan-running");
-        $("#scannowbtn").prop("disabled", false).text("6-Chamber Single Shot");
-        $("#btn-scan-circular").prop("disabled", false).text("▶ Circular Scan Well");
-    }
+    var circular = msg.running && msg.mode === "circular";
+    var sixChamber = msg.running && msg.mode === "six_chamber";
+    var modeLabel = circular ? "Circular Scan Well" : sixChamber ? "6-Chamber Single Shot" : "";
+    $("#scheduled-progress").text(automaticRunActive ? modeLabel + " · " + progress : "");
+    $("#scan-mode-status").text(modeLabel && !automaticRunActive ? modeLabel + " · " : "");
+    $("#scan_box").toggleClass("scan-running", !!msg.running);
+    $("#btn-scan-circular").prop("disabled", !!msg.running).toggleClass("active-scan", !!circular && !automaticRunActive);
+    $("#scannowbtn").prop("disabled", !!msg.running).toggleClass("active-scan", !!sixChamber && !automaticRunActive);
+}
+
+socket.on('scan_status', renderScanStatus);
+
+$("#btn-stop-scan").click(function() {
+    $.post("/scan/stop").done(function() {
+        $.getJSON("/scan_status", renderScanStatus);
+    }).fail(function() {
+        $("#scan_progress").text("Stop unconfirmed. Please retry.");
+    });
 });
 
 // Circular boustrophedon scan trigger & post-scan landmark verification
@@ -115,4 +135,114 @@ $(".detectorganoid").click(function() {
 socket.on('response3', function(msg) {
     document.getElementById('detection_image').src =
         "data:image/jpeg;base64," + msg.data;
+});
+
+var scheduleForm = document.getElementById("scan-schedule-form");
+var scheduleFeedback = $("#schedule-feedback");
+var savedSchedule;
+var scheduleFields = scheduleForm.elements;
+
+function showModeNote() {
+    $("#schedule-well-note").prop("hidden", scheduleFields.mode.value !== "circular");
+}
+
+function displayScheduleDate(iso) {
+    return iso.split("-").reverse().join("/");
+}
+
+function renderSchedule(settings) {
+    savedSchedule = settings;
+    updateAutomaticStop();
+    if (!settings.enabled) showNextScan(null);
+    scheduleFields.mode.value = settings.mode || "six_chamber";
+    var useWindow = settings.timing !== "interval" && (settings.enabled || settings.start_date ||
+        settings.end_date || settings.start !== "00:00" || settings.end !== "23:59");
+    scheduleFields.start_date.value = settings.start_date || "";
+    scheduleFields.end_date.value = settings.end_date || "";
+    scheduleFields.end_date.min = scheduleFields.start_date.value;
+    scheduleFields.start.value = useWindow && settings.wait_for_start !== false ? settings.start : "";
+    scheduleFields.end.value = useWindow ? settings.end : "";
+    scheduleFields.interval.value = settings.interval;
+    updateStartLabel();
+    showModeNote();
+    scheduleForm.hidden = settings.enabled;
+    $("#schedule-active").prop("hidden", !settings.enabled);
+    $(scheduleForm).find("fieldset").prop("disabled", false);
+    if (settings.enabled) {
+        var mode = settings.mode === "circular"
+            ? "Circular Scan Well (" + settings.circular.well + ")"
+            : "6-Chamber Single Shot";
+        var overnight = settings.end < settings.start ? " the next day" : "";
+        var dates = settings.start_date ? " From " + displayScheduleDate(settings.start_date) : "";
+        if (settings.end_date) dates += " through " + displayScheduleDate(settings.end_date) + " inclusive";
+        var summary = mode + " runs every " + settings.interval + " min";
+        if (settings.timing !== "interval") {
+            summary += ", daily from " + settings.start + " to " + settings.end + overnight + " (Los Angeles time)";
+        }
+        $("#schedule-summary").text(summary + "." + (dates ? dates + "." : ""));
+    }
+    scheduleFeedback.text(settings.enabled ? "" : "Automatic scanning is off.");
+}
+
+function submitSchedule(settings) {
+    var controls = $(scheduleForm).find("fieldset").add("#schedule-cancel");
+    controls.prop("disabled", true);
+    $.ajax({url: "/scan_schedule", method: "POST", contentType: "application/json",
+        data: JSON.stringify(settings)}).done(renderSchedule).fail(function(xhr) {
+        scheduleFeedback.text((xhr.responseJSON || {}).error || "Schedule update unconfirmed. Refresh to check.");
+    }).always(function() { controls.prop("disabled", false); });
+}
+
+function updateStartLabel() {
+    var n = scheduleFields.interval.valueAsNumber;
+    var prefix = "Scan now, then every ";
+    if (scheduleFields.start.value) prefix = "Start at " + scheduleFields.start.value + ", then every ";
+    else if (scheduleFields.start_date.value || scheduleFields.end_date.value || scheduleFields.end.value) prefix = "Start within window, then every ";
+    $("#schedule-start").text(scheduleFields.interval.validity.valid
+        ? prefix + n + (n === 1 ? " minute" : " minutes")
+        : "Start automatic scans");
+}
+window.addEventListener("pageshow", function() {
+    document.getElementById("schedule-advanced").open = false;
+});
+$("#schedule-clear-window").on("click", function() {
+    ["start_date", "end_date", "start", "end"].forEach(function(name) {
+        scheduleFields[name].value = "";
+    });
+    scheduleFields.end_date.min = "";
+    updateStartLabel();
+    scheduleFeedback.text("Dates and times cleared. Start automatic scans to use only the interval.");
+});
+$(scheduleForm).on("input", updateStartLabel);
+socket.on("scan_schedule", renderSchedule);
+$(scheduleFields.start_date).on("input", function() {
+    scheduleFields.end_date.min = this.value;
+});
+$(scheduleFields.mode).on("change", showModeNote);
+$.getJSON("/scan_schedule", renderSchedule).fail(function() {
+    scheduleFeedback.text("Could not load automatic scan settings. Refresh to retry.");
+});
+$(scheduleForm).on("submit", function(event) {
+    event.preventDefault();
+    var settings = {enabled: true, mode: scheduleFields.mode.value, start: scheduleFields.start.value,
+        end: scheduleFields.end.value, interval: scheduleFields.interval.valueAsNumber};
+    settings.start_date = scheduleFields.start_date.value;
+    settings.end_date = scheduleFields.end_date.value;
+    if (settings.start_date || settings.end_date || settings.start || settings.end) {
+        settings.wait_for_start = Boolean(settings.start);
+        settings.start = settings.start || "00:00";
+        settings.end = settings.end || "23:59";
+    } else {
+        settings.timing = "interval";
+    }
+    if (settings.mode === "circular") {
+        settings.circular = {well: $("#scan-well-select").val(),
+            radius: document.getElementById("scan-geom-r").valueAsNumber,
+            step_x: document.getElementById("scan-geom-sx").valueAsNumber,
+            step_y: document.getElementById("scan-geom-sy").valueAsNumber};
+    }
+    submitSchedule(settings);
+});
+$("#schedule-cancel").on("click", function() {
+    submitSchedule(Object.assign({}, savedSchedule, {enabled: false}));
 });

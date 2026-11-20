@@ -76,7 +76,7 @@ def do_steps(
         time.sleep(delay)
 
 
-def move_platform(axis: str, direction, steps: int, delay: float = STEP_DELAY) -> None:
+def move_platform(axis: str, direction, steps: int, delay: float = STEP_DELAY, *, cancel=None) -> None:
     """
     Move x_motor or y_motor a given number of steps and release the coil when done.
     Used during automated multi-well chamber scans.
@@ -87,10 +87,14 @@ def move_platform(axis: str, direction, steps: int, delay: float = STEP_DELAY) -
         return
 
     resolved_dir = resolve_stepper_direction(direction)
-    for _ in range(steps):
-        motor.onestep(direction=resolved_dir, style=stepper.SINGLE)
-        time.sleep(delay)
-    motor.release()
+    try:
+        for _ in range(steps):
+            if cancel is not None and cancel.is_set():
+                break
+            motor.onestep(direction=resolved_dir, style=stepper.SINGLE)
+            time.sleep(delay)
+    finally:
+        motor.release()
 
 
 # ── Release ───────────────────────────────────────────────────

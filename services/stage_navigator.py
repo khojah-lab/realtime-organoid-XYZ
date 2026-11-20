@@ -63,6 +63,7 @@ class StageNavigator:
 
         self.state: dict = {
             "updated_at": None,
+            "focus_saved": False,
             "in_motion": False,
             "position_uncertain": False,
             "current_position": {"x": 0, "y": 0, "z": 0},
@@ -105,11 +106,13 @@ class StageNavigator:
                         self.state[key].update(loaded[key])
                 self.state["in_motion"] = bool(loaded.get("in_motion", False))
                 self.state["position_uncertain"] = bool(loaded.get("position_uncertain", False))
+                self.state["focus_saved"] = loaded.get("focus_saved") is True
                 self.state["updated_at"] = loaded.get("updated_at")
 
             # Detect hard crash / power loss mid-move
             if self.state["in_motion"]:
                 self.state["in_motion"] = False
+                self.state["focus_saved"] = False
                 self.state["position_uncertain"] = True
                 self.save_state()
                 pos = self.state["current_position"]
@@ -129,6 +132,7 @@ class StageNavigator:
                 "updated_at": self.state["updated_at"],
                 "in_motion": self.state["in_motion"],
                 "position_uncertain": self.state["position_uncertain"],
+                "focus_saved": self.state["focus_saved"],
                 "current_position": dict(self.state["current_position"]),
                 "soft_limits": dict(self.state["soft_limits"]),
                 "bookmarks": {k: list(v) for k, v in self.state["bookmarks"].items()},
@@ -194,13 +198,24 @@ class StageNavigator:
         self.save_state()
 
     # ── Dual Coordinate Reset & Bookmarking ───────────────────
+    def set_focus_zero(self):
+        with self._lock:
+            self.pos["z"] = 0
+            self.state["focus_saved"] = True
+            self.save_state()
+
+    def return_to_focus(self):
+        if not self.state["focus_saved"]:
+            raise ValueError("Set the current focus height first.")
+        self._step_axis("z", -self.pos["z"])
+
     def set_origin(self) -> dict[str, int]:
         """
-        Reset current physical position as (0, 0, 0) (`bottom_left` landmark)
+        Reset current XY position as (0, 0) (`bottom_left` landmark)
         and clear any crash uncertainty flag.
         """
         with self._lock:
-            self.state["current_position"] = {"x": 0, "y": 0, "z": 0}
+            self.pos.update(x=0, y=0)
             self.state["bookmarks"]["bottom_left"] = [0, 0]
             self.state["in_motion"] = False
             self.state["position_uncertain"] = False
@@ -241,12 +256,12 @@ class StageNavigator:
         was_clamped = (cx != int(target_x)) or (cy != int(target_y))
         return cx, cy, was_clamped
 
-    def _step_axis(self, axis: str, signed_steps: int) -> int:
+    def _step_axis(self, axis: str, signed_steps: int, cancel: threading.Event | None = None) -> int:
         """
         Step a single axis ('x', 'y', or 'z') by `signed_steps`, updating
         `current_position` after every step and flushing state in `finally`.
         """
-        if signed_steps == 0:
+        if signed_steps == 0 or (cancel and cancel.is_set()):
             return 0
 
         axis = axis.lower()
@@ -297,7 +312,7 @@ class StageNavigator:
 
             resolved_dir = stepper_motors.resolve_stepper_direction(direction_str)
             for _ in range(steps):
-                if interrupted:
+                if interrupted or (cancel and cancel.is_set()):
                     break
                 for m in motors:
                     m.onestep(direction=resolved_dir, style=stepper.SINGLE)
@@ -323,6 +338,7 @@ class StageNavigator:
         target_x: int,
         target_y: int,
         target_z: int | None = None,
+        *, cancel: threading.Event | None = None,
     ) -> dict[str, int]:
         """Move to (target_x, target_y[, target_z]) with soft-limit clamping on XY."""
         cx, cy, clamped = self.clamp_xy(target_x, target_y)
@@ -338,12 +354,17 @@ class StageNavigator:
         dz = (int(target_z) - self.pos["z"]) if target_z is not None else 0
 
         if dx != 0:
-            self._step_axis("x", dx)
+            self._step_axis("x", dx, cancel)
         if dy != 0:
-            self._step_axis("y", dy)
+            self._step_axis("y", dy, cancel)
         if dz != 0:
-            self._step_axis("z", dz)
+            self._step_axis("z", dz, cancel)
 
+        return dict(self.pos)
+
+    def jog_axis(self, axis: str, steps: int, cancel: threading.Event) -> dict[str, int]:
+        """Move only the operator-selected axis, including beyond navigation limits."""
+        self._step_axis(axis, steps, cancel)
         return dict(self.pos)
 
     def move_by(self, dx: int = 0, dy: int = 0, dz: int = 0) -> dict[str, int]:

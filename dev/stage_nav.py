@@ -299,7 +299,7 @@ class StageNavCLI:
                     )
                 elif cmd == "zero":
                     self.nav.set_origin()
-                    print("  ✓ Origin set to (0, 0, 0) at `bottom_left` landmark.")
+                    print("  ✓ XY origin set to (0, 0) at `bottom_left` landmark.")
                 elif cmd == "mark":
                     name = parts[1]
                     if len(parts) >= 4:
