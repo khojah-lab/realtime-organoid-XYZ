@@ -269,7 +269,7 @@
 
         <!-- ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── -->
         <div class="scan-box" id="scan_box">
-            <b>Stage scans</b><br>
+            <h3 class="scan-section-title">Run a scan once</h3>
             <div class="scan-config-row">
                 <span>Circular scan settings</span>
                 <label>Well:
@@ -294,14 +294,15 @@
             </div>
             <div>Last scan: <span id="scan_last">Never</span></div>
             <div role="status"><strong id="scan-mode-status"></strong><span id="scan_progress"></span></div>
-            <div class="scan-actions-row">
+            <p class="scan-mode-hint" id="scan-mode-hint">Circular Scan Well takes multiple photos in one well. Single Shot takes one photo per well across all six.</p>
+            <div class="scan-actions-row" role="group" aria-describedby="scan-mode-hint" aria-label="Run one scan">
                 <button class="scannowbutton" id="btn-scan-circular" type="button">▶ Circular Scan Well</button>
                 <button class="scannowbutton secondary-scan-btn" id="scannowbtn" type="button">6-Chamber Single Shot</button>
                 <button id="btn-stop-scan" type="button" hidden>Stop scan</button>
             </div>
 
             <section class="scan-schedule" aria-labelledby="schedule-title">
-                <h3 id="schedule-title">Automatic scan timing</h3>
+                <h3 class="scan-section-title" id="schedule-title">Schedule automatic scans</h3>
                 <form id="scan-schedule-form">
                     <fieldset disabled>
                         <label>Scan mode
