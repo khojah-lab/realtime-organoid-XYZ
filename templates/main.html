@@ -270,9 +270,10 @@
         <!-- ── CIRCULAR WELL SCAN & LANDMARK VERIFICATION ── -->
         <div class="scan-box" id="scan_box">
             <h3 class="scan-section-title">Run a scan once</h3>
-            <div class="scan-config-row">
-                <span>Circular scan settings</span>
-                <label>Well:
+            <fieldset class="circular-settings">
+                <legend>Circular Scan Well only</legend>
+                <div class="scan-config-row">
+                <label>Target well
                     <select id="scan-well-select">
                         <option value="bottom_middle" selected>bottom_middle</option>
                         <option value="bottom_left">bottom_left</option>
@@ -282,17 +283,19 @@
                         <option value="top_right">top_right</option>
                     </select>
                 </label>
-                <label>R:
+                <label>Radius (R)
                     <input type="number" id="scan-geom-r" value="1500">
                 </label>
-                <label>ΔX:
+                <label>Column spacing (ΔX)
                     <input type="number" id="scan-geom-sx" value="500">
                 </label>
-                <label>ΔY:
+                <label>Row spacing (ΔY)
                     <input type="number" id="scan-geom-sy" value="500">
                 </label>
-            </div>
-            <div>Last scan: <span id="scan_last">Never</span></div>
+                </div>
+                <small>Distances are in motor steps. Smaller spacing takes more photos within the circle.</small>
+            </fieldset>
+            <div>Last scan: <span id="scan_last">Loading…</span></div>
             <div role="status"><strong id="scan-mode-status"></strong><span id="scan_progress"></span></div>
             <p class="scan-mode-hint" id="scan-mode-hint">Circular Scan Well takes multiple photos in one well. Single Shot takes one photo per well across all six.</p>
             <div class="scan-actions-row" role="group" aria-describedby="scan-mode-hint" aria-label="Run one scan">

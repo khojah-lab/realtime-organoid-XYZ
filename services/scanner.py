@@ -29,9 +29,22 @@ from services import storage_manager
 from services.telemetry import Timer, emit_socket_event, log_event
 
 # ── Scan Status State (shared with UI) ────────────────────────
+_last_scan_file = BASE_DIR / "state" / "last_scan.txt"
+
+
+def _load_last_scan():
+    try:
+        return _last_scan_file.read_text(encoding="utf8").strip() or "No scan recorded"
+    except FileNotFoundError:
+        return "No scan recorded"
+    except (OSError, UnicodeError) as exc:
+        print(f"[SCAN] Could not load last scan: {exc}")
+        return "Scan history unavailable"
+
+
 scan_status = {
     "running":      False,
-    "last_scan":    "Never",
+    "last_scan":    _load_last_scan(),
     "next_scan":    "Calculating..." if AUTO_SCAN_ENABLED else "—",
     "current_step": "",
 }
@@ -59,11 +72,23 @@ def request_scan_stop():
         return dict(scan_status)
 
 
-def finish_scan_status(cancel, stopped_message):
+def finish_scan_status(cancel, stopped_message, result="Failed"):
     global _active_cancel
     with _scan_lock:
         if cancel.is_set():
             scan_status["current_step"] = stopped_message
+            result = "Stopped"
+        mode = "Circular Scan Well" if scan_status["mode"] == "circular" else "6-Chamber Single Shot"
+        timestamp = datetime.datetime.now(LA_TZ).strftime("%Y-%m-%d %H:%M %Z")
+        record = f"{timestamp} · {mode} · {result}"
+        scan_status["last_scan"] = record
+        try:
+            _last_scan_file.parent.mkdir(parents=True, exist_ok=True)
+            temp = _last_scan_file.with_suffix(".tmp")
+            temp.write_text(record, encoding="utf8")
+            temp.replace(_last_scan_file)
+        except OSError as exc:
+            print(f"[SCAN] Could not persist last scan: {exc}")
         scan_status.update(running=False, mode=None, stopping=False)
         _active_cancel = None
         emit_socket_event("scan_status", dict(scan_status))
@@ -98,10 +123,11 @@ def run_scan() -> None:
 
 
 def _run_reserved_scan(cancel):
+    result = "Failed"
     sid = None
     try:
         sid = storage_manager.begin_scan()
-        _run_scan(sid, cancel)
+        result = _run_scan(sid, cancel)
     except Exception as exc:
         scan_status["current_step"] = str(exc)
         emit_socket_event("scan_status", scan_status)
@@ -110,8 +136,11 @@ def _run_reserved_scan(cancel):
         try:
             if sid:
                 storage_manager.finish_scan(sid)
+        except Exception:
+            result = "Failed"
+            raise
         finally:
-            finish_scan_status(cancel, "Six-chamber scan stopped.")
+            finish_scan_status(cancel, "Six-chamber scan stopped.", result)
 
 
 def _run_scan(drive_session, cancel) -> None:
@@ -182,15 +211,14 @@ def _run_scan(drive_session, cancel) -> None:
 
             if move_to_chamber("bottom_right"):
                 print("  Returned to bottom_right")
+            return f"{len(captured_files)}/{len(CHAMBER_NAMES)} photos saved"
 
         finally:
             set_led(False)
             emit_socket_event("led_state", {"state": False})
             print("  [LED] OFF after scan\n")
 
-            now = datetime.datetime.now(LA_TZ)
             if not cancel.is_set():
-                scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
                 scan_status["current_step"] = ""
 
 
@@ -299,19 +327,19 @@ def start_circular_scan(data, *, remember_geometry=False):
                     "position": pos,
                 },
             )
+            return f"{captured}/{len(tiles)} photos saved"
         finally:
             set_led(False)
             emit_socket_event("led_state", {"state": False})
-            now = datetime.datetime.now(LA_TZ)
             if not cancel.is_set():
-                scan_status["last_scan"] = now.strftime("%Y-%m-%d %H:%M")
                 scan_status["current_step"] = ""
 
     def worker():
+        result = "Failed"
         try:
-            run_circular_scan()
+            result = run_circular_scan()
         finally:
-            finish_scan_status(cancel, "Circular scan stopped.")
+            finish_scan_status(cancel, "Circular scan stopped.", result)
 
     try:
         threading.Thread(target=worker, daemon=True).start()
