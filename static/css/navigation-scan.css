@@ -10,13 +10,13 @@
     max-width: 560px;
 }
 
-.xy-calibration h3 {
+.origin-calibration h3 {
     margin: 0 0 8px;
     color: #1a237e;
     font-size: 1.15em;
 }
 
-.xy-calibration summary {
+.origin-calibration summary {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -29,9 +29,9 @@
     font-weight: 600;
 }
 
-.xy-calibration summary::-webkit-details-marker { display: none; }
+.origin-calibration summary::-webkit-details-marker { display: none; }
 
-.xy-calibration summary::before {
+.origin-calibration summary::before {
     content: "";
     width: 6px;
     height: 6px;
@@ -40,7 +40,7 @@
     transform: rotate(-45deg);
 }
 
-.xy-calibration details[open] > summary::before { transform: rotate(45deg); }
+.origin-calibration details[open] > summary::before { transform: rotate(45deg); }
 
 .scan-box b {
     color: #1a237e;
@@ -369,14 +369,17 @@
 .log-scan  { color: #4dd0e1; }
 
 .scan-schedule { margin-top: 12px; border-top: 1px solid #ccd6e0; padding-top: 8px; }
-#stage-autofocus > summary {
-    font: bold 18px/1.3 sans-serif;
-    color: #1a237e;
-    cursor: pointer;
+#focus-actions {
+    margin: 10px 0 0;
+    padding: 0;
+    border: 0;
 }
-.focus-advanced { margin-top: 8px; font: 13px/1.4 sans-serif; }
-.focus-advanced summary { cursor: pointer; }
-.focus-advanced p { margin: 5px 0; }
+#focus-actions p {
+    margin: 12px 0 6px;
+    padding-top: 10px;
+    border-top: 1px solid #ccd6e0;
+}
+#focus-status:not(:empty) { display: block; margin-top: 8px; }
 
 #scan_box .scan-section-title {
     margin: 2px 0 10px;

@@ -241,21 +241,20 @@
         </div>
 
         <br>
-        <details id="stage-autofocus">
-            <summary>Autofocus</summary>
-            <fieldset id="focus-actions" disabled>
-                <legend>Focus height</legend>
-                <button type="button" id="focus-recall" disabled>Move to saved height</button>
-                <details class="focus-advanced">
-                    <summary>Advanced</summary>
-                    <p>After focusing manually, save the current height as the position Autofocus will return to.</p>
+        <section class="scan-box origin-calibration" id="stage-autofocus" aria-labelledby="z-origin-heading">
+            <h3 id="z-origin-heading">Z origin</h3>
+            <details>
+                <summary>Advanced calibration</summary>
+                <fieldset id="focus-actions" aria-label="Focus height" disabled>
+                    <button type="button" id="focus-recall" disabled>Move to saved height</button>
+                    <p>Focus manually, then save the current height as your Z origin.</p>
                     <button type="button" id="focus-save">Save current height</button>
-                </details>
-            </fieldset>
-            <span id="focus-status" role="status"></span>
-        </details>
+                </fieldset>
+                <span id="focus-status" role="status"></span>
+            </details>
+        </section>
 
-        <section class="scan-box xy-calibration" aria-labelledby="xy-origin-heading">
+        <section class="scan-box origin-calibration" aria-labelledby="xy-origin-heading">
             <h3 id="xy-origin-heading">XY origin</h3>
             <details>
                 <summary>Advanced calibration</summary>
