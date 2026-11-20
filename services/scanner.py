@@ -22,6 +22,7 @@ from config import (
     CAPTURE_JPEG_QUALITY,
     CHAMBER_NAMES,
 )
+from time_plot.analytics import record_field
 from hardware.camera import capture_fresh_bgr_frame
 from hardware.gpio_control import set_led
 from services.stage_navigator import get_navigator
@@ -108,7 +109,7 @@ def get_scan_status() -> dict:
     return dict(scan_status)
 
 
-def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
+def take_scan_photo(chamber_name: str, drive_session=None, *, analytics_well=None) -> str | None:
     now = datetime.datetime.now(LA_TZ)
     name = f"{chamber_name}_{now.strftime('%Y%m%d_%H%M%S')}.jpg"
     try:
@@ -118,7 +119,13 @@ def take_scan_photo(chamber_name: str, drive_session=None) -> str | None:
         ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, CAPTURE_JPEG_QUALITY])
         if not ok:
             raise RuntimeError("JPEG encoding failed")
-        return storage_manager.capture(drive_session, name, now, encoded.tobytes())
+        path = storage_manager.capture(drive_session, name, now, encoded.tobytes())
+        if analytics_well:
+            try:
+                record_field(frame, analytics_well, drive_session, now, name)
+            except Exception as exc:
+                print(f"[ANALYTICS] Could not record {name}: {exc!r}", flush=True)
+        return path
     except Exception as exc:
         print(f"[SCAN] Capture failed: {exc}")
         return None
@@ -200,7 +207,7 @@ def _run_scan(drive_session, cancel) -> None:
                 print(f"\n  Chamber {i+1}/{total}: {chamber}")
                 if cancel.is_set():
                     return
-                fname = take_scan_photo(chamber, drive_session)
+                fname = take_scan_photo(chamber, drive_session, analytics_well=chamber)
 
                 if fname:
                     captured_files.append(fname)
@@ -273,7 +280,7 @@ def start_circular_scan(data, *, remember_geometry=False, source="manual"):
     if cancel is None:
         return {"error": "A scan is already running"}, 409
 
-    def run_circular_scan():
+    def run_circular_scan(session):
         t_start = time.perf_counter()
         scan_status["running"] = True
         scan_status["current_step"] = f"Starting circular scan on {well_name} ({len(tiles)} tiles)..."
@@ -307,7 +314,7 @@ def start_circular_scan(data, *, remember_geometry=False, source="manual"):
                     return
 
                 tile_label = f"{well_name}_r{r_idx:02d}_c{c_idx:02d}"
-                saved = take_scan_photo(tile_label)
+                saved = take_scan_photo(tile_label, session, analytics_well=well_name if (tx, ty) == (cx, cy) else None)
                 if saved:
                     captured += 1
                 tile_us = int((time.perf_counter() - t_tile) * 1_000_000)
@@ -346,7 +353,11 @@ def start_circular_scan(data, *, remember_geometry=False, source="manual"):
     def worker():
         result = "Failed"
         try:
-            result = run_circular_scan()
+            session = storage_manager.begin_scan()
+            try:
+                result = run_circular_scan(session)
+            finally:
+                storage_manager.finish_scan(session)
         finally:
             finish_scan_status(cancel, "Circular scan stopped.", result)
 

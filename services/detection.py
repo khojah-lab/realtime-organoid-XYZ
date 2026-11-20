@@ -57,19 +57,7 @@ def start_detection_model_loader() -> None:
     ).start()
 
 
-def simple_organoid_detection(
-    frame: np.ndarray,
-    min_area: float = 100.0,
-    max_area: float = 50000.0,
-) -> tuple[np.ndarray, int]:
-    """
-    Lightweight OpenCV contour-based organoid detection fallback.
-    Finds circular/elliptical organoid candidates via Gaussian blur,
-    adaptive thresholding, and contour area filtering.
-
-    Returns (annotated_bgr_frame, count).
-    """
-    annotated = frame.copy()
+def organoid_contours(frame, min_area=100.0, max_area=50000.0):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0)
 
@@ -88,26 +76,37 @@ def simple_organoid_detection(
     contours, _ = cv2.findContours(
         cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
+    return [cnt for cnt in contours if min_area <= cv2.contourArea(cnt) <= max_area]
 
-    count = 0
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if min_area <= area <= max_area:
-            count += 1
-            x, y, w, h = cv2.boundingRect(cnt)
-            cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(
-                annotated,
-                f"#{count}",
-                (x, max(15, y - 6)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                1,
-                cv2.LINE_AA,
-            )
 
-    return annotated, count
+def simple_organoid_detection(
+    frame: np.ndarray,
+    min_area: float = 100.0,
+    max_area: float = 50000.0,
+) -> tuple[np.ndarray, int]:
+    """
+    Lightweight OpenCV contour-based organoid detection fallback.
+    Finds circular/elliptical organoid candidates via Gaussian blur,
+    adaptive thresholding, and contour area filtering.
+
+    Returns (annotated_bgr_frame, count).
+    """
+    annotated = frame.copy()
+    contours = organoid_contours(frame, min_area, max_area)
+    for count, cnt in enumerate(contours, 1):
+        x, y, w, h = cv2.boundingRect(cnt)
+        cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(
+            annotated,
+            f"#{count}",
+            (x, max(15, y - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 0),
+            1,
+            cv2.LINE_AA,
+        )
+    return annotated, len(contours)
 
 
 def run_detection() -> None:

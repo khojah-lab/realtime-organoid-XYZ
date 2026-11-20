@@ -1,0 +1,26 @@
+<section id="growth-analytics" class="panel" aria-labelledby="growth-title" data-url="{{ url_for('time_plot.data') }}">
+  <link rel="stylesheet" href="{{ url_for('time_plot.static', filename='growth.css') }}">
+  <h2 id="growth-title">Growth analytics</h2>
+  <p>Each point measures detections in one well-center field. Field coverage is limited in this prototype.</p>
+  <div class="growth-filters">
+    <label>Starting date (Los Angeles)<input type="date" id="growth-start" required></label>
+    <label>Time range<select id="growth-range">
+      <option value="1">1 day</option><option value="7">7 days</option>
+      <option value="14">14 days</option><option value="30">30 days</option>
+    </select></label>
+    <label>Well<select id="growth-well"><option value="all">All six wells</option>
+      {% for row in ['top','bottom'] %}{% for col in ['left','middle','right'] %}
+      <option value="{{ row }}_{{ col }}">{{ row|title }} {{ col }}</option>
+      {% endfor %}{% endfor %}
+    </select></label>
+    <button type="button" id="growth-refresh">Refresh</button>
+  </div>
+  <p id="growth-status" role="status"></p>
+  <div id="growth-plots" hidden>
+    <div id="growth-legend"></div>
+    <h3>Detected count per field</h3><div id="growth-count"></div>
+    <h3>Mean equivalent diameter (px)</h3><div id="growth-size"></div>
+  </div>
+  <div id="growth-detail" role="tooltip" hidden></div>
+  <script defer src="{{ url_for('time_plot.static', filename='growth.js') }}"></script>
+</section>
