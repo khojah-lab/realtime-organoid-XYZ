@@ -30,10 +30,14 @@
         const left = 54, right = width - 44, top = 16, bottom = height - 36;
         const svg = svgNode(host, "svg", {viewBox: "0 0 " + width + " " + height,
             role:"group", "aria-label": metric === "count" ? "Count by capture time" : "Mean diameter by capture time"});
-        const start = Date.parse(data.start), end = Date.parse(data.end);
+        // Use all captures for both charts, including fields without a diameter.
+        const times = data.observations.map(row => Date.parse(row.timestamp));
+        const start = times.reduce((a, b) => Math.min(a, b));
+        const end = times.reduce((a, b) => Math.max(a, b));
+        const span = end - start;
         const rows = data.observations.filter(row => row[metric] != null);
         const max = Math.max(1, Math.ceil(rows.reduce((m,row) => Math.max(m,row[metric]),0)));
-        const x = row => left + (Date.parse(row.timestamp)-start)/(end-start)*(right-left);
+        const x = row => span ? left + (Date.parse(row.timestamp)-start)/span*(right-left) : (left+right)/2;
         const y = row => bottom - row[metric]/max*(bottom-top);
         const ticks = metric === "count" ? Math.min(max,4) : 4;
         for (let i=0; i<=ticks; i++) {
@@ -42,12 +46,19 @@
             svgNode(svg,"line",{x1:left,x2:right,y1:pos,y2:pos,stroke:"#e2e8ef"});
             svgNode(svg,"text",{x:left-7,y:pos+4,"text-anchor":"end","font-size":11},Number(value.toFixed(1)));
         }
-        const day = el("range").value === "1";
-        const fmt = new Intl.DateTimeFormat("en-US", {timeZone:zone,...(day ?
-            {hour:"2-digit",minute:"2-digit",hourCycle:"h23"} : {month:"short",day:"numeric"})});
-        for(let i=0;i<=4;i++) {
-            svgNode(svg,"text",{x:left+(right-left)*i/4,y:bottom+22,"text-anchor":"middle","font-size":11},
-                fmt.format(start+(end-start)*i/4));
+        const dateFmt = new Intl.DateTimeFormat("en-US", {timeZone:zone, month:"short", day:"numeric"});
+        const showDate = dateFmt.format(start) !== dateFmt.format(end) || span >= 86400000;
+        const clockFmt = new Intl.DateTimeFormat("en-US", {
+            timeZone:zone, hour:"2-digit", minute:"2-digit", hourCycle:"h23",
+            ...(span < 300000 ? {second:"2-digit"} : {})
+        });
+        const divisions = width < 480 ? 2 : 4;
+        for (let i = 0; i <= (span ? divisions : 0); i++) {
+            const fraction = span ? i/divisions : 0.5;
+            const instant = start + span*fraction;
+            const attrs = {x:left+(right-left)*fraction, y:bottom+16, "text-anchor":"middle", "font-size":11};
+            svgNode(svg, "text", attrs, clockFmt.format(instant));
+            if (showDate) svgNode(svg, "text", {...attrs, y:bottom+30}, dateFmt.format(instant));
         }
         for(const well of visible) {
             const points = rows.filter(row => row.well===well).sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp));
@@ -84,7 +95,7 @@
             const data=await response.json();
             if (request.signal.aborted) return;
             if (!data.observations.length) {el("status").textContent="No measurements for this well and date range.";return;}
-            el("status").textContent=data.observations.length+" field measurements";
+            el("status").textContent=data.observations.length+" field measurements · Capture time (Los Angeles)";
             const visible=well==="all"?wells:[well];
             el("legend").replaceChildren();
             for(const name of visible) {
