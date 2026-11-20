@@ -60,14 +60,19 @@ $(".focusminus").click(function() {
     s.val(v); $("#focus_text").html(v); fetchdata_zoom_focus();
 });
 
-$("#focus-set, #focus-return").click(function() {
-    var saving = this.id === "focus-set";
+$("#stage-autofocus").click(function() {
+    var button = $(this);
+    var saving = !button.data("saved");
+    if (saving && !window.confirm("Is the live image in focus? Save this height for Autofocus?")) return;
+    button.data("busy", true).prop("disabled", true);
     $("#focus-status").text(saving ? "Saving focus height..." : "Returning to focus...");
     $.post("/nav/focus/" + (saving ? "set" : "return")).done(function(state) {
         updateNavUI(state);
-        $("#focus-status").text(saving ? "Focus height saved. Z = 0." : "At saved focus height.");
+        $("#focus-status").text(saving ? "Focus height saved." : "At saved focus height.");
     }).fail(function(xhr) {
         $("#focus-status").text((xhr.responseJSON || {}).error || "Focus action unconfirmed.");
+    }).always(function() {
+        button.data("busy", false).prop("disabled", false);
     });
 });
 

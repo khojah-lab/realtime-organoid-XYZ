@@ -14,7 +14,10 @@ function formatSigned(val) {
 
 function updateNavUI(state) {
     if (!state) return;
-    $("#focus-return").prop("disabled", !state.focus_saved);
+    if (typeof state.focus_saved === "boolean") {
+        var focus = $("#stage-autofocus").data("saved", state.focus_saved);
+        focus.prop("disabled", !!focus.data("busy"));
+    }
     if (state.current_position) {
         $("#nav-pos-x").text(formatSigned(state.current_position.x));
         $("#nav-pos-y").text(formatSigned(state.current_position.y));
