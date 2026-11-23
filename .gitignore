@@ -94,3 +94,13 @@ drive_upload_state.sqlite3*
 storage_state.sqlite3*
 aws_spool/
 drive_spool_v2/
+
+# ========================
+# 2023-only model
+# ========================
+2023_only_model_work/
+2023_only_model_train.log
+/yolov8*-seg.pt
+/yolo11*-seg.pt
+!2023_only_model_results/**/*.png
+!2023_only_model_results/**/*.jpg
