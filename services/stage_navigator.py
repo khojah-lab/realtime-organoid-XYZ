@@ -362,9 +362,42 @@ class StageNavigator:
 
         return dict(self.pos)
 
-    def jog_axis(self, axis: str, steps: int, cancel: threading.Event) -> dict[str, int]:
-        """Move only the operator-selected axis, including beyond navigation limits."""
-        self._step_axis(axis, steps, cancel)
+    def jog_axis(self, axis: str, steps: int, cancel: threading.Event | None = None) -> dict[str, int]:
+        """Move only the operator-selected axis, clamped to soft_limits on XY."""
+        axis_key = axis.lower()
+        req_steps = int(steps)
+        clamped_steps = req_steps
+
+        if axis_key in ("x", "y") and req_steps != 0:
+            lims = self.soft_limits
+            min_lim = lims[f"min_{axis_key}"]
+            max_lim = lims[f"max_{axis_key}"]
+            cur = self.pos[axis_key]
+            target = cur + req_steps
+
+            if req_steps > 0:
+                if cur >= max_lim:
+                    clamped_steps = 0
+                else:
+                    clamped_steps = min(max_lim, target) - cur
+            else:
+                if cur <= min_lim:
+                    clamped_steps = 0
+                else:
+                    clamped_steps = max(min_lim, target) - cur
+
+            if clamped_steps != req_steps:
+                clamped_target = cur + clamped_steps
+                print(
+                    f"  [NAV CLAMP] Requested {axis_key.upper()} jog {req_steps:+d} from {cur} "
+                    f"clamped to {clamped_steps:+d} (target {clamped_target}, limits [{min_lim}, {max_lim}])"
+                )
+                log_event(
+                    f"NAV_CLAMP            Jog {axis_key.upper()}{req_steps:+d} from {cur:+d} clamped -> "
+                    f"{axis_key.upper()}={clamped_target:+d}"
+                )
+
+        self._step_axis(axis_key, clamped_steps, cancel)
         return dict(self.pos)
 
     def move_by(self, dx: int = 0, dy: int = 0, dz: int = 0) -> dict[str, int]:
