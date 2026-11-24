@@ -53,7 +53,7 @@ class Picamera2:
             return job.get_result(timeout=timeout)
         return job
 
-    def capture_request(self, wait=None, signal_function=None, flush=None):
+    def _render_frame(self):
         elapsed = time.time() - self._start_time
         frame = np.full((self._height, self._width, 3), 40, np.uint8)
         for index in range(6):
@@ -64,7 +64,17 @@ class Picamera2:
             )
             cv2.circle(frame, center, 40 + 8 * index, (120, 200, 160), -1)
             cv2.circle(frame, center, 40 + 8 * index, (200, 255, 220), 3)
-        cv2.putText(frame, "FAKE CAMERA", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+        cv2.putText(frame, "FAKE CAMERA", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 225), 3)
+        return frame
+
+    def capture_array(self, name="main", wait=None, signal_function=None, flush=None):
+        frame = self._render_frame()
+        if wait is False:
+            return _FakeJob(frame)
+        return frame
+
+    def capture_request(self, wait=None, signal_function=None, flush=None):
+        frame = self._render_frame()
         req = _FakeRequest(frame)
         if wait is False:
             return _FakeJob(req)

@@ -52,11 +52,11 @@ XY_STEPPER_HAT_ADDR = 0x61   # XY platform (stepper1 = X, stepper2 = Y)
 DC_MOTOR_HAT_ADDR   = 0x63   # 4-channel DC shaker motors
 
 # ── Camera Configuration ──────────────────────────────────────
-CAMERA_MAIN_SIZE                   = (1024, 1024)   # High-quality capture stream
-CAMERA_LORES_SIZE                  = (800, 800)     # Smooth web preview stream
-CAMERA_BUFFER_COUNT                = 6
+CAMERA_MAIN_SIZE                   = (1024, 1024)   # High-quality capture & stream resolution
+CAMERA_LORES_SIZE                  = (800, 800)     # Legacy alias (not allocated in Unicam to save CMA)
+CAMERA_BUFFER_COUNT                = 4              # Single-stream DMA buffer count (conserves Pi CMA)
 CAPTURE_INTERVAL_SEC               = 0.033          # ~30 FPS capture loop
-STREAM_INTERVAL_SEC                = 0.030          # ~30 FPS MJPEG stream loop
+STREAM_INTERVAL_SEC                = 0.033          # ~30 FPS MJPEG stream loop
 STREAM_JPEG_QUALITY                = 80
 CAPTURE_JPEG_QUALITY               = 90
 CAMERA_REQUEST_TIMEOUT_SEC         = 2.5            # Bounded timeout per Picamera2 request

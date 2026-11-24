@@ -68,7 +68,6 @@ function updateHardwareBanner(disconnected) {
     }
 }
 
-var _lastCameraSeq = null;
 var _cameraWasStalled = false;
 var _lastStreamReconnectMs = 0;
 
@@ -88,27 +87,21 @@ function updateCameraWatchdog(camera) {
     var img = document.getElementById('camera_feed');
 
     if (!camera.connected) {
-        statusEl.textContent = '\u26a0 Camera not connected.';
+        if (statusEl) statusEl.textContent = '\u26a0 Camera not connected.';
         _cameraWasStalled = true;
         return;
     }
 
-    var seqStalled = (_lastCameraSeq !== null && camera.frame_seq === _lastCameraSeq);
-    _lastCameraSeq = camera.frame_seq;
-
-    if (!camera.streaming || seqStalled) {
-        statusEl.textContent = '\u26a0 Camera stream stalled \u2014 auto-recovering...';
+    if (!camera.streaming) {
+        if (statusEl) statusEl.textContent = '\u26a0 Camera stream stalled \u2014 auto-recovering...';
         _cameraWasStalled = true;
         return;
     }
 
-    // Stream is healthy on the backend
+    if (statusEl) statusEl.textContent = '';
     if (_cameraWasStalled || (img && img.complete && img.naturalWidth === 0)) {
         _cameraWasStalled = false;
-        statusEl.textContent = '';
         reconnectVideoStream();
-    } else {
-        statusEl.textContent = '';
     }
 }
 
@@ -121,11 +114,14 @@ function markCameraStreamStalled(msg) {
 }
 
 $("#camera_feed").on("error", function() {
+    _cameraWasStalled = true;
     document.getElementById('stream_status').textContent = '\u26a0 Stream unavailable.';
 });
 
 $("#camera_feed").on("load", function() {
-    document.getElementById('stream_status').textContent = '';
+    if (!_cameraWasStalled) {
+        document.getElementById('stream_status').textContent = '';
+    }
 });
 
 socket.on('hardware_status', function(msg) {
@@ -134,7 +130,7 @@ socket.on('hardware_status', function(msg) {
 });
 
 socket.on('connect', function() {
-    if (_lastCameraSeq !== null) {
+    if (_cameraWasStalled) {
         reconnectVideoStream();
     }
 });

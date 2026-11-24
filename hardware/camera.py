@@ -1,9 +1,10 @@
 """
 hardware/camera.py
 ────────────────────────────────────────────────────────────────
-Manages the Picamera2 hardware stream, background frame buffer
-loop with bounded request timeouts and automatic pipeline
-recovery, MJPEG HTTP frame generator, and high-resolution still capture.
+Single-owner Picamera2 capture loop and read-only frame consumers.
+Only `_capture_loop` interacts with `picam2` while the server runs;
+MJPEG streaming, organoid detection, and plate scanning read or
+wait on `_frame_cond` without contending for the hardware device.
 ────────────────────────────────────────────────────────────────
 """
 
@@ -14,7 +15,6 @@ import numpy as np
 
 from config import (
     CAMERA_MAIN_SIZE,
-    CAMERA_LORES_SIZE,
     CAMERA_BUFFER_COUNT,
     CAPTURE_INTERVAL_SEC,
     STREAM_INTERVAL_SEC,
@@ -28,34 +28,8 @@ from services.telemetry import log_event
 # ── Camera Hardware Initialization ────────────────────────────
 picam2 = None
 _Picamera2_cls = None
-_camera_config = None
 _startup_monotonic = time.monotonic()
 
-
-def _configure_and_start(cam) -> dict:
-    """Create the dual-stream video configuration, configure `cam`, and start it."""
-    cfg = cam.create_video_configuration(
-        main={"size": CAMERA_MAIN_SIZE},   # high-quality capture stream
-        lores={"size": CAMERA_LORES_SIZE}, # smooth web preview stream
-        display="lores",
-        buffer_count=CAMERA_BUFFER_COUNT,
-    )
-    cam.configure(cfg)
-    cam.start()
-    return cfg
-
-
-try:
-    from picamera2 import Picamera2 as _Picamera2_cls
-
-    picam2 = _Picamera2_cls()
-    _camera_config = _configure_and_start(picam2)
-    time.sleep(2)
-except Exception as e:
-    print(f"[WARNING] Camera not available: {e}")
-    picam2 = None
-
-# ── Shared Frame Buffer, Watchdog State & Locks ───────────────
 _latest_frame: np.ndarray | None = None
 _latest_jpeg: bytes | None = None
 _latest_frame_time: float = 0.0
@@ -70,16 +44,77 @@ _consecutive_failures = 0
 _recovery_count = 0
 
 
+def _configure_and_start(cam) -> dict:
+    """Configure a single `main` stream (`1024x1024`) and start `cam`."""
+    cfg = cam.create_video_configuration(
+        main={"size": CAMERA_MAIN_SIZE},
+        buffer_count=CAMERA_BUFFER_COUNT,
+    )
+    cam.configure(cfg)
+    cam.start()
+    return cfg
+
+
+def _close_camera(cam) -> None:
+    if cam is None:
+        return
+    for method in ("stop", "close"):
+        try:
+            getattr(cam, method, lambda: None)()
+        except Exception:
+            pass
+
+
+def _reinit_camera_locked() -> bool:
+    """Close any wedged Picamera2 instance and recreate it from scratch."""
+    global picam2, _recovery_count
+    if _Picamera2_cls is None:
+        return False
+
+    _recovery_count += 1
+    print(f"[CAMERA] Re-initializing camera pipeline (#{_recovery_count})...")
+    log_event(f"CAMERA_RECOVERY_ATTEMPT_{_recovery_count}")
+
+    _close_camera(picam2)
+    picam2 = None
+
+    new_cam = None
+    try:
+        time.sleep(0.5)
+        new_cam = _Picamera2_cls()
+        _configure_and_start(new_cam)
+        time.sleep(0.5)
+        picam2 = new_cam
+        print(f"[CAMERA] ✓ Camera pipeline ready (#{_recovery_count})")
+        log_event("CAMERA_RECOVERY_SUCCESS")
+        return True
+    except Exception as e:
+        print(f"[CAMERA] ✗ Camera re-initialization failed: {e}")
+        _close_camera(new_cam)
+        log_event("CAMERA_RECOVERY_FAILED")
+        return False
+
+
+try:
+    from picamera2 import Picamera2 as _Picamera2_cls
+
+    picam2 = _Picamera2_cls()
+    _configure_and_start(picam2)
+    time.sleep(1.0)
+except Exception as e:
+    print(f"[WARNING] Camera not available: {e}")
+    _close_camera(picam2)
+    picam2 = None
+
+
+# ── Health & Status Queries ───────────────────────────────────
 def is_camera_connected() -> bool:
-    """Return True if Picamera2 initialized successfully."""
+    """Return True if Picamera2 is initialized."""
     return picam2 is not None
 
 
 def is_camera_streaming() -> bool:
-    """
-    Return True if Picamera2 is initialized and frames are actively arriving
-    within `CAMERA_STALL_TIMEOUT_SEC` (allowing a startup grace window).
-    """
+    """Return True if frames are arriving within `CAMERA_STALL_TIMEOUT_SEC`."""
     if picam2 is None:
         return False
     now = time.monotonic()
@@ -98,7 +133,7 @@ def get_camera_status() -> dict:
         last_time = _latest_frame_time
     age = (now - last_time) if last_time > 0.0 else None
     return {
-        "connected": picam2 is not None,
+        "connected": is_camera_connected(),
         "streaming": is_camera_streaming(),
         "frame_seq": seq,
         "frame_age_sec": round(age, 2) if age is not None else None,
@@ -106,155 +141,92 @@ def get_camera_status() -> dict:
     }
 
 
-def _restart_camera_locked() -> bool:
-    """
-    Attempt to recover a wedged Picamera2 / Unicam V4L2 pipeline while holding `_camera_lock`.
-    First cycles `stop() -> configure() -> start()`, and falls back to recreating `Picamera2()`.
-    """
-    global picam2, _camera_config, _recovery_count
-    if _Picamera2_cls is None:
-        return False
-
-    _recovery_count += 1
-    print(f"[CAMERA] Attempting camera pipeline recovery #{_recovery_count}...")
-    log_event(f"CAMERA_RECOVERY_ATTEMPT_{_recovery_count}")
-
-    # Step 1: Try cycling stop() -> configure() -> start() on the existing instance
-    if picam2 is not None:
-        try:
-            picam2.stop()
-            time.sleep(0.3)
-            _camera_config = _configure_and_start(picam2)
-            time.sleep(0.5)
-            print(f"[CAMERA] ✓ Camera pipeline restarted via stop/start (#{_recovery_count})")
-            log_event("CAMERA_RECOVERY_SUCCESS")
-            return True
-        except Exception as e:
-            print(f"[CAMERA] stop/start recovery failed ({e}); attempting full re-init...")
-            try:
-                if hasattr(picam2, "close"):
-                    picam2.close()
-            except Exception:
-                pass
-            picam2 = None
-
-    # Step 2: Recreate the Picamera2 instance from scratch
-    try:
-        time.sleep(0.5)
-        new_cam = _Picamera2_cls()
-        _camera_config = _configure_and_start(new_cam)
-        time.sleep(1.0)
-        picam2 = new_cam
-        print(f"[CAMERA] ✓ Camera pipeline re-initialized from scratch (#{_recovery_count})")
-        log_event("CAMERA_RECOVERY_SUCCESS")
-        return True
-    except Exception as e:
-        print(f"[CAMERA] ✗ Full camera re-initialization failed: {e}")
-        log_event("CAMERA_RECOVERY_FAILED")
-        return False
-
-
+# ── Single-Owner Capture & Frame Consumers ────────────────────
 def capture_bgr_frame(timeout: float = CAMERA_REQUEST_TIMEOUT_SEC) -> np.ndarray | None:
     """
-    Capture a fresh full-resolution frame from Picamera2 with a bounded timeout,
-    always releasing the underlying DMA request buffer, and convert RGB -> BGR.
-    Automatically restarts the camera pipeline after repeated timeouts/failures.
+    Capture one oriented BGR frame from `picam2`.
+    Uses `picam2.capture_array("main")` so Picamera2 releases the underlying
+    DMA buffer internally before returning.
     """
     global _consecutive_failures
     if picam2 is None and _Picamera2_cls is None:
         return None
 
     if not _camera_lock.acquire(timeout=timeout + 1.0):
-        print("[CAMERA] Timed out waiting to acquire _camera_lock")
         return None
 
     try:
-        if picam2 is None:
-            if not _restart_camera_locked():
-                return None
+        if picam2 is None and not _reinit_camera_locked():
+            return None
 
-        request = None
         try:
-            if hasattr(picam2, "wait"):
-                job = picam2.capture_request(wait=False)
-                request = picam2.wait(job, timeout=timeout)
+            if hasattr(picam2, "capture_array"):
+                raw = picam2.capture_array("main")
             else:
-                request = picam2.capture_request()
+                req = picam2.capture_request()
+                try:
+                    raw = req.make_array("main")
+                finally:
+                    req.release()
 
-            if request is None:
-                raise TimeoutError("picam2.capture_request returned None")
-
-            try:
-                frame = request.make_array("main")
-            finally:
-                request.release()
+            if raw is None:
+                raise RuntimeError("Camera returned empty frame")
 
             _consecutive_failures = 0
-
-            #rotate + flip
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            color_code = cv2.COLOR_RGBA2BGR if (raw.ndim == 3 and raw.shape[2] == 4) else cv2.COLOR_RGB2BGR
+            frame = cv2.cvtColor(raw, color_code)
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-            frame = cv2.flip(frame, 0)
-            return frame
+            return cv2.flip(frame, 0)
 
         except Exception as e:
             _consecutive_failures += 1
-            print(
-                f"[CAMERA] Capture error/timeout ({_consecutive_failures}/"
-                f"{CAMERA_MAX_FAILURES_BEFORE_RESTART}): {e}"
-            )
+            print(f"[CAMERA] Capture error ({_consecutive_failures}/{CAMERA_MAX_FAILURES_BEFORE_RESTART}): {e}")
             if _consecutive_failures >= CAMERA_MAX_FAILURES_BEFORE_RESTART:
                 _consecutive_failures = 0
-                _restart_camera_locked()
+                _reinit_camera_locked()
             return None
     finally:
         _camera_lock.release()
 
 
 def get_latest_frame() -> np.ndarray | None:
-    """Return a thread-safe copy of the most recent frame from the buffer."""
+    """Return a thread-safe copy of the most recent frame from `_capture_loop`."""
     with _frame_lock:
-        if _latest_frame is None:
-            return None
-        return _latest_frame.copy()
+        return _latest_frame.copy() if _latest_frame is not None else None
 
 
 def capture_fresh_bgr_frame(
     max_age_sec: float = 0.25,
-    wait_timeout_sec: float = CAMERA_REQUEST_TIMEOUT_SEC,
+    wait_timeout_sec: float = CAMERA_STALL_TIMEOUT_SEC,
 ) -> np.ndarray | None:
     """
-    Return a fresh BGR frame for scan/analysis without competing with `_capture_loop`
-    for Picamera2 requests when the background capture thread is active.
-    Waits for a frame newer than `max_age_sec` (or the next captured frame),
-    and falls back to `capture_bgr_frame()` if the capture loop is not running.
+    Return a fresh BGR frame for scanning/analysis by waiting on `_frame_cond`
+    published by `_capture_loop` (never touching `picam2` directly when the
+    capture thread is running).
     """
-    if _capture_thread_started:
-        deadline = time.monotonic() + wait_timeout_sec
-        with _frame_cond:
-            start_seq = _latest_frame_seq
-            while True:
-                now = time.monotonic()
-                if (
-                    _latest_frame is not None
-                    and _latest_frame_time > 0.0
-                    and (
-                        (now - _latest_frame_time) <= max_age_sec
-                        or _latest_frame_seq > start_seq
-                    )
-                ):
-                    return _latest_frame.copy()
+    if not _capture_thread_started:
+        return capture_bgr_frame(timeout=wait_timeout_sec)
 
-                remaining = deadline - now
-                if remaining <= 0:
-                    break
-                _frame_cond.wait(timeout=min(remaining, 0.25))
+    deadline = time.monotonic() + wait_timeout_sec
+    with _frame_cond:
+        start_seq = _latest_frame_seq
+        while True:
+            now = time.monotonic()
+            if (
+                _latest_frame is not None
+                and _latest_frame_time > 0.0
+                and ((now - _latest_frame_time) <= max_age_sec or _latest_frame_seq > start_seq)
+            ):
+                return _latest_frame.copy()
 
-    return capture_bgr_frame(timeout=wait_timeout_sec)
+            remaining = deadline - now
+            if remaining <= 0:
+                return _latest_frame.copy() if _latest_frame is not None else None
+            _frame_cond.wait(timeout=min(remaining, 0.25))
 
 
 def _capture_loop() -> None:
-    """Background daemon loop that continuously updates `_latest_frame` and `_latest_jpeg`."""
+    """Single-owner background loop that updates `_latest_frame` and `_latest_jpeg`."""
     global _latest_frame, _latest_jpeg, _latest_frame_time, _latest_frame_seq
     if picam2 is None and _Picamera2_cls is None:
         return
@@ -262,18 +234,8 @@ def _capture_loop() -> None:
     while True:
         frame = capture_bgr_frame()
         if frame is not None:
-            jpeg_bytes = None
-            try:
-                ret, buffer = cv2.imencode(
-                    ".jpg",
-                    frame,
-                    [cv2.IMWRITE_JPEG_QUALITY, STREAM_JPEG_QUALITY],
-                )
-                if ret:
-                    jpeg_bytes = buffer.tobytes()
-            except Exception as e:
-                print(f"[CAMERA] JPEG encoding error: {e}")
-
+            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, STREAM_JPEG_QUALITY])
+            jpeg_bytes = buf.tobytes() if ok else None
             with _frame_cond:
                 _latest_frame = frame
                 if jpeg_bytes is not None:
@@ -281,10 +243,9 @@ def _capture_loop() -> None:
                 _latest_frame_time = time.monotonic()
                 _latest_frame_seq += 1
                 _frame_cond.notify_all()
+            time.sleep(CAPTURE_INTERVAL_SEC)
         else:
-            time.sleep(0.1)
-
-        time.sleep(CAPTURE_INTERVAL_SEC)
+            time.sleep(0.25)
 
 
 def start_camera_capture_thread() -> None:
@@ -297,28 +258,21 @@ def start_camera_capture_thread() -> None:
 
 
 def generate_mjpeg_frames():
-    """
-    Generator yielding multipart MJPEG frames for the `/video` route.
-    Uses pre-encoded JPEG buffers and waits on `_frame_cond` so stalled streams
-    do not spin-encode identical frames at 30 FPS.
-    """
+    """Yield multipart MJPEG frames whenever `_latest_frame_seq` advances."""
     last_sent_seq = -1
+    try:
+        while True:
+            with _frame_cond:
+                if _latest_jpeg is None or _latest_frame_seq == last_sent_seq:
+                    _frame_cond.wait(timeout=1.0)
+                jpeg_bytes = _latest_jpeg
+                current_seq = _latest_frame_seq
 
-    while True:
-        with _frame_cond:
-            if _latest_jpeg is None or _latest_frame_seq == last_sent_seq:
-                _frame_cond.wait(timeout=1.0)
+            if jpeg_bytes is None or current_seq == last_sent_seq:
+                continue
 
-            jpeg_bytes = _latest_jpeg
-            current_seq = _latest_frame_seq
-
-        if jpeg_bytes is None:
-            time.sleep(0.05)
-            continue
-
-        last_sent_seq = current_seq
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
-        )
-        time.sleep(STREAM_INTERVAL_SEC)
+            last_sent_seq = current_seq
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
+            time.sleep(STREAM_INTERVAL_SEC)
+    except (GeneratorExit, BrokenPipeError, ConnectionResetError):
+        return
