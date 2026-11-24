@@ -106,8 +106,7 @@ realtime-organoid-XYZ/
 │   └── fakes/                 # Mock RPi.GPIO, picamera2, and adafruit_motorkit modules
 ├── templates/
 │   └── main.html              # Web dashboard UI
-├── timing_data/               # Telemetry test suite & HTML performance report generators
-└── archive/                   # Legacy scripts and historical reference files
+└── timing_data/               # Telemetry test suite & HTML performance report generators
 ```
 
 ---
